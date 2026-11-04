@@ -1,0 +1,31 @@
+# Secrets & Environments
+.env
+*.env
+.env.*
+!.env.example
+
+# Python & Backend
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Flutter & Mobile
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+local.properties
+.gradle/
+*.iml
+*.keystore
+*.jks
+key.properties
+
+# IDE & Operating System
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
