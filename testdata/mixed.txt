@@ -1,0 +1,1 @@
+Trong vài năm gần đây, nhiều startup Việt Nam bắt đầu áp dụng artificial intelligence để tự động hóa customer service. Chatbot có thể trả lời câu hỏi 24/7, giúp giảm chi phí vận hành đáng kể. However, các chuyên gia cảnh báo rằng data privacy và độ chính xác của model vẫn là thách thức lớn.
