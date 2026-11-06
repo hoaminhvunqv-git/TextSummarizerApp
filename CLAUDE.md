@@ -12,6 +12,7 @@
 3. **Mỗi bước một mục tiêu kiểm chứng được.** Kết thúc bước phải ghi: (a) cách chạy, (b) cách test (lệnh curl / thao tác trên app), (c) kết quả mong đợi.
 4. Gợi ý commit message sau mỗi bước xong.
 5. Khi không chắc về yêu cầu: **hỏi**, đừng tự đoán. Khi tên model/API/package có thể đã đổi: nói rõ cần kiểm tra tài liệu chính thức.
+6. **Theo dõi tiến độ bằng `docs/PROGRESS.md`** theo mục "Theo dõi tiến độ" bên dưới. Đây là bước bắt buộc, không được bỏ qua
 
 ## Quy tắc code
 - **Không đổi tên** file, bảng, cột, endpoint, error_code đã định nghĩa trong docs. Muốn thêm thì thêm, không sửa tên.
