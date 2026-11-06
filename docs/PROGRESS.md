@@ -18,6 +18,11 @@ Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Gia
   - Xây dựng `StorageService` (lưu và sinh UUID v4 cho `device_id`) và `ApiClient` (Dio interceptor tự động gắn `X-Device-ID`, `X-App-Version`, timeout 60s).
   - Hoàn thiện giao diện `HomeView` dạng tích hợp: thanh 3 nút thao tác nhanh (Dán chữ, Quét ảnh, Chọn tệp), khung soạn thảo kèm bộ đếm ký tự (200 - 30.000 ký tự), bộ chọn độ dài (Ngắn, Vừa, Chi tiết), nút tóm tắt tự động vô hiệu hoá khi đang xử lý / chưa đủ ký tự.
   - Đã bỏ dòng lưu ý quyền riêng tư.
+  - Nâng cấp UI/UX theo yêu cầu:
+    + Thêm dòng chú thích: "Hỗ trợ tóm tắt văn bản Tiếng Việt & Tiếng Anh" phía trên hàng nút công cụ.
+    + Nút "Dán chữ" focus vào TextField và hiển thị SnackBar: "Hãy chọn đoạn văn cần tóm tắt".
+    + Đổi nhãn độ dài từ "Chi tiết" thành "Dài" (giữ nguyên tham số `long`).
+    + Tích hợp tính năng "Xem thêm ˅ / Thu gọn ˄" cho ô soạn thảo khi vượt quá 8 dòng, kèm ShaderMask gradient fade ở đáy khi thu gọn.
   - `flutter analyze` và `flutter test` đạt 100% không lỗi.
 
 ## Đang dở / bước tiếp theo

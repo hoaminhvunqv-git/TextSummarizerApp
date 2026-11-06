@@ -5,8 +5,44 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import '../core/constants.dart';
 import '../providers/summary_provider.dart';
 
-class HomeView extends StatelessWidget {
+class HomeView extends StatefulWidget {
   const HomeView({super.key});
+
+  @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> {
+  late final FocusNode _textFocusNode;
+  bool _isExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _textFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _textFocusNode.dispose();
+    super.dispose();
+  }
+
+  /// Kiểm tra xem văn bản có vượt quá 8 dòng hay không
+  bool _checkExceeds8Lines(String text, double maxWidth) {
+    if (text.isEmpty) return false;
+    final span = TextSpan(
+      text: text,
+      style: const TextStyle(fontSize: 14, height: 1.5, fontFamily: 'Roboto'),
+    );
+    final tp = TextPainter(
+      text: span,
+      maxLines: 8,
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout(maxWidth: maxWidth);
+    return tp.didExceedMaxLines;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,25 +58,45 @@ class HomeView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. THANH CÔNG CỤ THAO TÁC NHANH (3 NÚT CHỨC NĂNG)
+              // 1. DÒNG THÔNG BÁO MÔ TẢ HỖ TRỢ NGÔN NGỮ
+              Padding(
+                padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.language_rounded, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Hỗ trợ tóm tắt văn bản Tiếng Việt & Tiếng Anh',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 2. THANH CÔNG CỤ THAO TÁC NHANH (3 NÚT CHỨC NĂNG)
               _buildActionRibbon(context, provider),
 
               const SizedBox(height: 12),
 
-              // 2. KHUNG SOẠN THẢO VĂN BẢN TRUNG TÂM
+              // 3. KHUNG SOẠN THẢO VĂN BẢN TRUNG TÂM (KÈM TÍNH NĂNG XEM THÊM / THU GỌN)
               _buildEditorCard(context, provider),
 
               const SizedBox(height: 20),
 
-              // 3. BỘ CHỌN ĐỘ DÀI TÓM TẮT
+              // 4. BỘ CHỌN ĐỘ DÀI TÓM TẮT (Ngắn / Vừa / Dài)
               _buildLengthSelector(context, provider),
 
               const SizedBox(height: 24),
 
-              // 4. NÚT HÀNH ĐỘNG CHÍNH (VÔ HIỆU HÓA KHI ĐANG XỬ LÝ HOẶC CHƯA ĐỦ ĐIỀU KIỆN)
+              // 5. NÚT HÀNH ĐỘNG CHÍNH (VÔ HIỆU HÓA KHI ĐANG XỬ LÝ HOẶC CHƯA ĐỦ ĐIỀU KIỆN)
               _buildSubmitButton(context, provider),
 
-              // 5. HIỂN THỊ KẾT QUẢ TÓM TẮT (NẾU CÓ)
+              // 6. HIỂN THỊ KẾT QUẢ TÓM TẮT (NẾU CÓ)
               if (provider.summaryResult != null) ...[
                 const SizedBox(height: 24),
                 _buildResultCard(context, provider),
@@ -52,7 +108,7 @@ class HomeView extends StatelessWidget {
     );
   }
 
-  /// 3 nút chức năng phân bố chuyên nghiệp phía trên khung soạn thảo
+  /// 3 nút chức năng phía trên khung soạn thảo
   Widget _buildActionRibbon(BuildContext context, SummaryProvider provider) {
     return Card(
       elevation: 0.5,
@@ -67,7 +123,20 @@ class HomeView extends StatelessWidget {
                 icon: Icons.paste_rounded,
                 label: 'Dán chữ',
                 color: AppConstants.primaryColor,
-                onPressed: provider.isLoading ? null : () => provider.pasteFromClipboard(),
+                onPressed: provider.isLoading
+                    ? null
+                    : () {
+                        // Focus vào ô soạn thảo và hiển thị SnackBar hướng dẫn người dùng
+                        _textFocusNode.requestFocus();
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Hãy chọn đoạn văn cần tóm tắt'),
+                            duration: Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
               ),
             ),
             const SizedBox(width: 6),
@@ -79,6 +148,7 @@ class HomeView extends StatelessWidget {
                 onPressed: provider.isLoading
                     ? null
                     : () {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Tính năng Quét ảnh OCR đang được kết nối.'),
@@ -97,6 +167,7 @@ class HomeView extends StatelessWidget {
                 onPressed: provider.isLoading
                     ? null
                     : () {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Tính năng Trích xuất file đang được kết nối.'),
@@ -111,7 +182,14 @@ class HomeView extends StatelessWidget {
               IconButton(
                 tooltip: 'Xóa nội dung',
                 icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 20),
-                onPressed: provider.isLoading ? null : () => provider.clearText(),
+                onPressed: provider.isLoading
+                    ? null
+                    : () {
+                        provider.clearText();
+                        setState(() {
+                          _isExpanded = false;
+                        });
+                      },
               ),
             ],
           ],
@@ -142,7 +220,7 @@ class HomeView extends StatelessWidget {
     );
   }
 
-  /// Khung nhập văn bản chính kèm bộ đếm ký tự
+  /// Khung soạn thảo văn bản kèm tính năng Xem thêm / Thu gọn và Gradient Mask
   Widget _buildEditorCard(BuildContext context, SummaryProvider provider) {
     final charCount = provider.charCount;
     Color counterColor = AppConstants.textSecondaryColor;
@@ -162,15 +240,20 @@ class HomeView extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14.0),
-        child: Column(
-          children: [
-            TextField(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Chiều rộng khả dụng của khung text (trừ padding)
+            final double textWidth = constraints.maxWidth;
+            final bool exceeds8Lines = _checkExceeds8Lines(provider.textController.text, textWidth);
+
+            Widget textFieldWidget = TextField(
               controller: provider.textController,
+              focusNode: _textFocusNode,
               enabled: !provider.isLoading,
               maxLines: null,
               minLines: 8,
               keyboardType: TextInputType.multiline,
-              style: const TextStyle(fontSize: 14, height: 1.5),
+              style: const TextStyle(fontSize: 14, height: 1.5, fontFamily: 'Roboto'),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -178,36 +261,100 @@ class HomeView extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 hintText: 'Nhập, dán hoặc quét văn bản cần tóm tắt tại đây...\n(Tối thiểu 200 đến 30.000 ký tự)',
               ),
-            ),
-            const Divider(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  statusNote,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: counterColor,
+            );
+
+            // Khi văn bản vượt quá 8 dòng và đang ở trạng thái thu gọn:
+            // Giới hạn chiều cao tương đương 8 dòng và phủ hiệu ứng Gradient Fade mờ dần ở đáy
+            if (exceeds8Lines && !_isExpanded) {
+              const double maxCollapsedHeight = 8 * 14 * 1.5; // ~168px
+              textFieldWidget = SizedBox(
+                height: maxCollapsedHeight,
+                child: ShaderMask(
+                  shaderCallback: (Rect bounds) {
+                    return const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black,
+                        Colors.black,
+                        Colors.transparent,
+                      ],
+                      stops: [0.0, 0.70, 1.0], // Mờ dần ở khoảng 2 dòng cuối
+                    ).createShader(bounds);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: textFieldWidget,
                   ),
                 ),
-                Text(
-                  '$charCount / ${AppConstants.maxChars} ký tự',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: counterColor,
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                textFieldWidget,
+
+                // Nút điều khiển "Xem thêm ˅ / Thu gọn ˄" khi văn bản dài hơn 8 dòng
+                if (exceeds8Lines) ...[
+                  const SizedBox(height: 4),
+                  Center(
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: AppConstants.secondaryColor,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isExpanded = !_isExpanded;
+                        });
+                      },
+                      icon: Icon(
+                        _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _isExpanded ? 'Thu gọn ˄' : 'Xem thêm ˅',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ),
+                ],
+
+                const Divider(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      statusNote,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: counterColor,
+                      ),
+                    ),
+                    Text(
+                      '$charCount / ${AppConstants.maxChars} ký tự',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: counterColor,
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 
-  /// Bộ chọn độ dài tóm tắt: Ngắn / Vừa / Chi tiết
+  /// Bộ chọn độ dài tóm tắt: Ngắn / Vừa / Dài
   Widget _buildLengthSelector(BuildContext context, SummaryProvider provider) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +390,7 @@ class HomeView extends StatelessWidget {
               context: context,
               provider: provider,
               lengthKey: 'long',
-              title: 'Chi tiết',
+              title: 'Dài', // Đã đổi nhãn từ 'Chi tiết' thành 'Dài'
               subtitle: '≤ 350 từ',
             ),
           ],
