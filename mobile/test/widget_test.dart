@@ -25,9 +25,9 @@ void main() {
     // 5. Verify Primary Action Button
     expect(find.text('Tóm tắt văn bản'), findsOneWidget);
 
-    // 6. Test tapping 'Dán chữ' triggers SnackBar
+    // 6. Test tapping 'Dán chữ' triggers SnackBar when clipboard is empty
     await tester.tap(find.text('Dán chữ'));
     await tester.pump();
-    expect(find.text('Hãy chọn đoạn văn cần tóm tắt'), findsOneWidget);
+    expect(find.text('Bộ nhớ tạm chưa có nội dung văn bản'), findsOneWidget);
   });
 }

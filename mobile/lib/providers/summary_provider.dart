@@ -35,13 +35,18 @@ class SummaryProvider extends ChangeNotifier {
     }
   }
 
-  /// Dán văn bản từ Clipboard vào ô soạn thảo
-  Future<void> pasteFromClipboard() async {
+  /// Dán văn bản từ Clipboard vào ô soạn thảo, trả về true nếu dán thành công
+  Future<bool> pasteFromClipboard() async {
     final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-    if (clipboardData != null && clipboardData.text != null) {
+    if (clipboardData != null && clipboardData.text != null && clipboardData.text!.trim().isNotEmpty) {
       textController.text = clipboardData.text!;
+      textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: textController.text.length),
+      );
       notifyListeners();
+      return true;
     }
+    return false;
   }
 
   /// Xóa sạch văn bản

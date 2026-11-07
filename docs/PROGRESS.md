@@ -20,7 +20,7 @@ Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Gia
   - Đã bỏ dòng lưu ý quyền riêng tư.
   - Nâng cấp UI/UX theo yêu cầu:
     + Thêm dòng chú thích: "Hỗ trợ tóm tắt văn bản Tiếng Việt & Tiếng Anh" phía trên hàng nút công cụ.
-    + Nút "Dán chữ" focus vào TextField và hiển thị SnackBar: "Hãy chọn đoạn văn cần tóm tắt".
+    + Nút "Dán chữ" dán trực tiếp nội dung văn bản từ clipboard vào ô soạn thảo, thông báo nếu clipboard rỗng.
     + Đổi nhãn độ dài từ "Chi tiết" thành "Dài" (giữ nguyên tham số `long`).
     + Tích hợp tính năng "Xem thêm ˅ / Thu gọn ˄" cho ô soạn thảo khi vượt quá 8 dòng, kèm ShaderMask gradient fade ở đáy khi thu gọn.
   - `flutter analyze` và `flutter test` đạt 100% không lỗi.

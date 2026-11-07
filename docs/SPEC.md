@@ -75,7 +75,7 @@ Một chuỗi văn bản gồm: 1 đoạn tóm tắt, một dòng trống, rồi
 | Test | `pytest` |
 
 ### 2.3. Hạ tầng
-- **DB:** Neon (hoặc Supabase), chuỗi kết nối có `sslmode=require`. **Không** dùng Postgres miễn phí của Render (có thời hạn).
+- **DB:** Neon , chuỗi kết nối có `sslmode=require`. **Không** dùng Postgres miễn phí của Render (có thời hạn).
 - **API:** Render (HTTPS mặc định). Có `render.yaml` + `GET /health`.
 - Local test: HTTPS qua Ngrok nếu cần.
 - **Render free ngủ khi rảnh → cold start 30–60s.** Dio `connectTimeout`/`receiveTimeout` ≥ 60s; nếu request > 8s chưa phản hồi, hiện "Đang đánh thức máy chủ...".

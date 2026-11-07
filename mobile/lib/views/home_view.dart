@@ -125,17 +125,19 @@ class _HomeViewState extends State<HomeView> {
                 color: AppConstants.primaryColor,
                 onPressed: provider.isLoading
                     ? null
-                    : () {
-                        // Focus vào ô soạn thảo và hiển thị SnackBar hướng dẫn người dùng
-                        _textFocusNode.requestFocus();
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Hãy chọn đoạn văn cần tóm tắt'),
-                            duration: Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                    : () async {
+                        // Dán trực tiếp văn bản từ clipboard vào ô soạn thảo
+                        final bool pasted = await provider.pasteFromClipboard();
+                        if (context.mounted && !pasted) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Bộ nhớ tạm chưa có nội dung văn bản'),
+                              duration: Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
                       },
               ),
             ),
