@@ -19,7 +19,7 @@
 1. Khung Flask: `app.py`, `config.py`, `utils/responses.py`, `utils/errors.py`, error handler toàn cục, `GET /health`, `GET /api/v1/config`.
 2. `utils/text_utils.py` + `validators.py`: NFC, strip, kiểm tra 200–30.000, kiểm tra header `X-Device-ID`/`X-App-Version`.
 3. `services/tfidf_service.py` (fallback) — viết **trước** Gemini để có đường chạy ngay.
-4. `services/gemini_service.py` theo `PROMPTS.md` (JSON schema, timeout 30s, retry 1 lần, fallback).
+4. `services/gemini_service.py` theo `PROMPTS.md` (JSON schema, timeout 15s, retry 1 lần, fallback).
 5. `POST /api/v1/summaries` (chưa lưu DB, `id: null`), `Flask-Limiter` theo IP.
 6. `POST /api/v1/files/extract` (TXT/DOCX/PDF, 10MB, `PDF_SCANNED`).
 7. `pytest`: validate độ dài/NFC; TF-IDF trả đúng số câu và giữ thứ tự.

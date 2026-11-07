@@ -6,7 +6,7 @@
 ## 0. Cấu hình (`config.py`, đọc từ env)
 ```
 GEMINI_MODEL=gemini-2.5-flash      # kiểm tra tên model mới nhất
-GEMINI_TIMEOUT_SECONDS=30
+GEMINI_TIMEOUT_SECONDS=15
 GEMINI_MAX_RETRY=1                 # retry 1 lần khi JSON hỏng/rỗng, sau đó fallback
 ```
 Gọi bằng JSON có cấu trúc (`response_mime_type="application/json"` + `response_schema`), `temperature` thấp (~0.3 tóm tắt, ~0.7 quiz).
@@ -131,7 +131,7 @@ resp = client.models.generate_content(
         response_mime_type="application/json",
         response_schema=SUMMARY_SCHEMA,
         temperature=0.3,
-        # timeout: cấu hình qua http_options hoặc bọc bằng concurrent.futures (30s)
+        # timeout: cấu hình qua http_options hoặc bọc bằng concurrent.futures (15s)
     ),
 )
 data = json.loads(resp.text)  # try/except -> retry/fallback

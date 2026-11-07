@@ -182,7 +182,7 @@ TextSummarizerAI/
 - Header `X-Device-ID` (UUID v4) bắt buộc với mọi endpoint nghiệp vụ; sai định dạng → `INVALID_DEVICE_ID`.
 
 ### 5.6. Fallback tóm tắt
-- Điều kiện chuyển sang TF-IDF: Gemini timeout (30s), lỗi mạng, hết hạn mức, bị chặn safety, trả rỗng, hoặc JSON hỏng sau 1 lần retry.
+- Điều kiện chuyển sang TF-IDF: Gemini timeout (15s), lỗi mạng, hết hạn mức, bị chặn safety, trả rỗng, hoặc JSON hỏng sau 1 lần retry.
 - Thuật toán: tách câu bằng regex (hỗ trợ dấu `.!?…` và xuống dòng), chấm điểm câu bằng TF-IDF, lấy top-k theo `length`, **giữ nguyên thứ tự gốc**. Không dùng stopword tiếng Anh cho tiếng Việt.
 - `title` fallback = câu đầu cắt ≤ 60 ký tự; `description` = 120 ký tự đầu của bản tóm tắt. Phần "ý chính" có thể bỏ.
 - Response luôn có `source: "gemini" | "tfidf"`.

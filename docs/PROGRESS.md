@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1A — Bước 1A.3 đã xong. Chuẩn bị bước 1A.4 (services/gemini_service.py).
+Giai đoạn 1A — Bước 1A.4 đã xong. Chuẩn bị bước 1A.5 (`POST /api/v1/summaries` + Flask-Limiter theo IP).
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -33,9 +33,18 @@ Giai đoạn 1A — Bước 1A.3 đã xong. Chuẩn bị bước 1A.4 (services/
   - Thêm `scikit-learn>=1.3.0` vào `backend/requirements.txt`.
   - Xây dựng `backend/services/tfidf_service.py`: Thuật toán tóm tắt trích xuất câu bằng TF-IDF, lọc top-k câu theo tỷ lệ `short` (~15%), `medium` (~25%), `long` (~40%). Giữ nguyên thứ tự câu gốc ban đầu (SPEC 5.6). Sinh `title` (câu đầu <= 60 ký tự), `description` (120 ký tự đầu), `summary`, `language`, và `source="tfidf"`.
   - Xây dựng `backend/tests/test_tfidf.py` kiểm thử tóm tắt tiếng Việt, tiếng Anh, bảo toàn thứ tự câu gốc, và tỷ lệ số câu theo độ dài. Toàn bộ 18 tests trong `pytest` đạt 100% xanh trong 1.4s.
+- Bước 1A.4 (Gemini Service):
+  - Thêm `google-genai>=1.0.0` vào `backend/requirements.txt`.
+  - Xây dựng `backend/services/gemini_service.py`: gọi Gemini theo đúng `docs/PROMPTS.md` (system instruction tách biệt, bọc nội dung trong `<document>...</document>` để chống prompt injection, `response_mime_type="application/json"` + `response_schema`, `temperature=0.3`, timeout 15s qua `http_options`).
+  - Kiểm tra JSON trả về: đủ 4 trường `language`/`title`/`description`/`summary`, `language` ∈ {vi, en}, không rỗng; cắt `title` ≤ 120 ký tự, `description` ≤ 300 ký tự. Trả kèm `source="gemini"` và `original_length`.
+  - Retry 1 lần (`GEMINI_MAX_RETRY`), hết retry vẫn lỗi → tự động fallback sang `TfidfService.summarize`. Tóm tắt không bao giờ trả `AI_UNAVAILABLE`.
+  - Client Gemini là singleton, có `set_client()` để mock trong unit test.
+  - Xây dựng `backend/tests/test_gemini.py`: fallback khi không có API key, mock thành công, retry lần 2 thành công, hết retry → fallback, và 1 test gọi API thật kiểm tra phòng thủ prompt injection với `injection.txt`.
+  - Toàn bộ 22 tests trong `pytest` đạt 100% xanh trong 2.23s (test gọi API thật đã được tách riêng, xem mục "Cách chạy và test").
 
 ## Đang dở / bước tiếp theo
-- 1A.4: `services/gemini_service.py` (kết nối AI Gemini theo `docs/PROMPTS.md`, JSON schema, timeout 30s, retry 1 lần, tự động fallback sang TF-IDF service).
+- 1A.5: `POST /api/v1/summaries` (chưa lưu DB, `id: null`) + `Flask-Limiter` giới hạn theo IP. Cần thêm `Flask-Limiter` vào `requirements.txt` (đã có trong danh sách cho phép ở SPEC 2.2).
+- Chưa chốt: ở GĐ1 chưa có quota/DB thì trường `usage` trong response nên bỏ hẳn (thêm lại ở GĐ2) hay trả hằng 20/20.
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -47,6 +56,9 @@ Giai đoạn 1A — Bước 1A.3 đã xong. Chuẩn bị bước 1A.4 (services/
 - So sánh phiên bản semver chuẩn `(major, minor, patch)` cho header `X-App-Version`.
 - TF-IDF extractive summarization: sắp xếp lại các câu trích xuất theo chỉ số gốc ban đầu để câu văn tóm tắt luôn xuôi dòng ngữ cảnh.
 - Không áp dụng `stop_words='english'` khi ngôn ngữ là tiếng Việt để tránh lọc sai hoặc ảnh hưởng đến từ tiếng Việt.
+- Giảm timeout Gemini AI từ 30s xuống 15s để tối ưu tốc độ phản hồi cho người dùng, cập nhật đồng bộ toàn bộ tài liệu dự án (`SPEC.md`, `PROMPTS.md`, `PHASES.md`, `PROGRESS.md`, `backend/.env.example`, `backend/config.py`).
+- Không log `str(e)` khi gọi Gemini thất bại, chỉ log `type(e).__name__`: thông báo lỗi của SDK có thể chứa lại nội dung văn bản người dùng (CLAUDE.md cấm log nội dung).
+- Tách test gọi Gemini API thật sang marker `live` trong `pytest.ini` và mặc định loại trừ (`addopts = -m "not live"`) để `pytest` thường không tốn quota và chạy nhanh (75s → 2.2s).
 
 ## Lỗi đã biết / việc cần nhớ
 - (chưa có)
@@ -61,7 +73,8 @@ Giai đoạn 1A — Bước 1A.3 đã xong. Chuẩn bị bước 1A.4 (services/
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -v
+  .\.venv\Scripts\pytest -v          # 22 tests, không gọi API thật
+  .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
   ```
 - Kiểm tra mã nguồn Flutter:
   ```bash
