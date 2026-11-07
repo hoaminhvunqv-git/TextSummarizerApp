@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1A — Bước 1A.2 đã xong. Chuẩn bị bước 1A.3 (TF-IDF fallback service).
+Giai đoạn 1A — Bước 1A.3 đã xong. Chuẩn bị bước 1A.4 (services/gemini_service.py).
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -29,9 +29,13 @@ Giai đoạn 1A — Bước 1A.2 đã xong. Chuẩn bị bước 1A.3 (TF-IDF fa
   - Xây dựng `backend/utils/text_utils.py`: Chuẩn hóa Unicode NFC, đếm ký tự thực tế, tách câu regex tiếng Việt/Anh, nhận diện ngôn ngữ ưu thế (`vi`/`en`).
   - Xây dựng `backend/utils/validators.py`: Validate độ dài 200–30.000 ký tự (`TEXT_TOO_SHORT`, `TEXT_TOO_LONG`), validate tham số `length` (`short`, `medium`, `long`), validate `X-Device-ID` chuẩn UUID v4 (`INVALID_DEVICE_ID`), validate `X-App-Version` so sánh phiên bản semver với `MIN_APP_VERSION` (HTTP 426 `UPDATE_REQUIRED`), và decorator `@require_device_and_version`.
   - Tạo `backend/tests/test_validators.py` kiểm thử toàn diện với bộ `testdata/` (`short_100.txt`, `long_31000.txt`, `vi_500.txt`, `en_250.txt`, `emoji.txt`). Toàn bộ 13 tests trong `pytest` đạt 100% xanh.
+- Bước 1A.3 (TF-IDF Fallback Service):
+  - Thêm `scikit-learn>=1.3.0` vào `backend/requirements.txt`.
+  - Xây dựng `backend/services/tfidf_service.py`: Thuật toán tóm tắt trích xuất câu bằng TF-IDF, lọc top-k câu theo tỷ lệ `short` (~15%), `medium` (~25%), `long` (~40%). Giữ nguyên thứ tự câu gốc ban đầu (SPEC 5.6). Sinh `title` (câu đầu <= 60 ký tự), `description` (120 ký tự đầu), `summary`, `language`, và `source="tfidf"`.
+  - Xây dựng `backend/tests/test_tfidf.py` kiểm thử tóm tắt tiếng Việt, tiếng Anh, bảo toàn thứ tự câu gốc, và tỷ lệ số câu theo độ dài. Toàn bộ 18 tests trong `pytest` đạt 100% xanh trong 1.4s.
 
 ## Đang dở / bước tiếp theo
-- 1A.3: `services/tfidf_service.py` (thuật toán TF-IDF fallback tóm tắt văn bản theo độ dài short/medium/long).
+- 1A.4: `services/gemini_service.py` (kết nối AI Gemini theo `docs/PROMPTS.md`, JSON schema, timeout 30s, retry 1 lần, tự động fallback sang TF-IDF service).
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -41,6 +45,8 @@ Giai đoạn 1A — Bước 1A.2 đã xong. Chuẩn bị bước 1A.3 (TF-IDF fa
 - Đã loại bỏ dòng chữ lưu ý quyền riêng tư theo yêu cầu.
 - Chuẩn hóa Unicode NFC và strip trước khi tính độ dài len() theo đúng quy tắc tại SPEC 5.1 và CLAUDE.md.
 - So sánh phiên bản semver chuẩn `(major, minor, patch)` cho header `X-App-Version`.
+- TF-IDF extractive summarization: sắp xếp lại các câu trích xuất theo chỉ số gốc ban đầu để câu văn tóm tắt luôn xuôi dòng ngữ cảnh.
+- Không áp dụng `stop_words='english'` khi ngôn ngữ là tiếng Việt để tránh lọc sai hoặc ảnh hưởng đến từ tiếng Việt.
 
 ## Lỗi đã biết / việc cần nhớ
 - (chưa có)
