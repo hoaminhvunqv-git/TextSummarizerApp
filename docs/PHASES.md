@@ -28,7 +28,7 @@
 1. Khung app, theme (Navy `#143C64`, Roboto), `flutter_launcher_icons`.
 2. `core/api_client.dart` (Dio): gắn `X-Device-ID` (uuid lưu secure storage), `X-App-Version`; timeout ≥ 60s; thông báo "Đang đánh thức máy chủ..." sau 8s; xử lý lỗi → SnackBar.
 3. `AndroidManifest.xml`: **thêm quyền INTERNET**, quyền camera nếu cần; `minSdkVersion` theo yêu cầu của ML Kit (≥ 21, kiểm tra README package).
-4. HomeView 3 tab: Dán chữ / Quét ảnh (OCR, có ô sửa) / Chọn file (extract → ô sửa). Chọn độ dài Ngắn/Vừa/Chi tiết. Hiển thị kết quả + Copy/Chia sẻ.
+4. HomeView 1 tab: Dán chữ / Quét ảnh (OCR, có ô sửa) / Chọn file (extract → ô sửa). Chọn độ dài Ngắn/Vừa/Dài. Hiển thị kết quả + Copy/Chia sẻ.
 5. Nút gửi bị vô hiệu hóa khi đang xử lý.
 
 ### 1C. Nối và kiểm thử

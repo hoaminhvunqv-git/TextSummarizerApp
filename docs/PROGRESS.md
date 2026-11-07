@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Giai đoạn 1A.2 (Backend logic validate).
+Giai đoạn 1A — Bước 1A.2 đã xong. Chuẩn bị bước 1A.3 (TF-IDF fallback service).
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -23,10 +23,15 @@ Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Gia
     + Nút "Dán chữ" dán trực tiếp nội dung văn bản từ clipboard vào ô soạn thảo, thông báo nếu clipboard rỗng.
     + Đổi nhãn độ dài từ "Chi tiết" thành "Dài" (giữ nguyên tham số `long`).
     + Tích hợp tính năng "Xem thêm ˅ / Thu gọn ˄" cho ô soạn thảo khi vượt quá 8 dòng, kèm ShaderMask gradient fade ở đáy khi thu gọn.
-  - `flutter analyze` và `flutter test` đạt 100% không lỗi.
+    + Cập nhật hintText ô soạn thảo: "Nhận tóm tắt từ 200 đến 30.000 ký tự".
+  - `flutter analyze` đạt 100% không lỗi.
+- Bước 1A.2 (Text utils & Validators Backend):
+  - Xây dựng `backend/utils/text_utils.py`: Chuẩn hóa Unicode NFC, đếm ký tự thực tế, tách câu regex tiếng Việt/Anh, nhận diện ngôn ngữ ưu thế (`vi`/`en`).
+  - Xây dựng `backend/utils/validators.py`: Validate độ dài 200–30.000 ký tự (`TEXT_TOO_SHORT`, `TEXT_TOO_LONG`), validate tham số `length` (`short`, `medium`, `long`), validate `X-Device-ID` chuẩn UUID v4 (`INVALID_DEVICE_ID`), validate `X-App-Version` so sánh phiên bản semver với `MIN_APP_VERSION` (HTTP 426 `UPDATE_REQUIRED`), và decorator `@require_device_and_version`.
+  - Tạo `backend/tests/test_validators.py` kiểm thử toàn diện với bộ `testdata/` (`short_100.txt`, `long_31000.txt`, `vi_500.txt`, `en_250.txt`, `emoji.txt`). Toàn bộ 13 tests trong `pytest` đạt 100% xanh.
 
 ## Đang dở / bước tiếp theo
-- 1A.2: `utils/text_utils.py` + `validators.py` (Backend): NFC, strip, kiểm tra 200–30.000, kiểm tra header `X-Device-ID`/`X-App-Version`.
+- 1A.3: `services/tfidf_service.py` (thuật toán TF-IDF fallback tóm tắt văn bản theo độ dài short/medium/long).
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -34,6 +39,8 @@ Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Gia
 - Cấu hình `app.json.ensure_ascii = False` để JSON trả về tiếng Việt UTF-8 trực tiếp, không bị mã hoá thành `\u...`.
 - Thiết kế giao diện `HomeView` dạng 1 màn hình tích hợp (Unified Screen), đặt 3 nút thao tác trên ribbon phía trên khung soạn thảo.
 - Đã loại bỏ dòng chữ lưu ý quyền riêng tư theo yêu cầu.
+- Chuẩn hóa Unicode NFC và strip trước khi tính độ dài len() theo đúng quy tắc tại SPEC 5.1 và CLAUDE.md.
+- So sánh phiên bản semver chuẩn `(major, minor, patch)` cho header `X-App-Version`.
 
 ## Lỗi đã biết / việc cần nhớ
 - (chưa có)
@@ -48,13 +55,12 @@ Giai đoạn 1B (Khung Flutter) đã xong. Chuẩn bị bước tiếp theo: Gia
 - Test backend:
   ```bash
   cd backend
-  pytest
+  .\.venv\Scripts\pytest -v
   ```
 - Kiểm tra mã nguồn Flutter:
   ```bash
   cd mobile
   flutter analyze
-  flutter test
   ```
 - Chạy app Flutter trên thiết bị/emulator:
   ```bash
