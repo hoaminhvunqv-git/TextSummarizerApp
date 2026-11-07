@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Quyền truy cập Internet (bắt buộc theo docs/PHASES.md 1B.3) -->
     <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Quyền camera và bộ nhớ cho OCR (Bước 1C.2) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <application
         android:label="TextSummarizer AI"

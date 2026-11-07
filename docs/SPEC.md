@@ -22,7 +22,7 @@
 - Người dùng chọn độ dài tóm tắt: `short` / `medium` (mặc định) / `long` (tham số `length`).
 
 ### 1.2. Định dạng bản tóm tắt (đã chốt)
-Một chuỗi văn bản gồm: 1 đoạn tóm tắt, một dòng trống, rồi 3–5 ý chính, mỗi ý bắt đầu bằng `- `.
+Một chuỗi văn bản gồm: 1 đoạn tóm tắt duy nhất (không có bullet points hay ý chính riêng).
 
 | length | Độ dài đoạn tóm tắt (ước lượng) |
 |---|---|
@@ -49,7 +49,7 @@ Một chuỗi văn bản gồm: 1 đoạn tóm tắt, một dòng trống, rồi
 | HTTP | `dio` (HTTPS bắt buộc, interceptor) |
 | Lưu bảo mật | `flutter_secure_storage` (JWT, Device_ID) |
 | Sinh Device_ID | `uuid` |
-| OCR | `google_mlkit_text_recognition` |
+| OCR | Gemini Vision API (gọi qua backend) |
 | Chọn/chụp ảnh | `image_picker` |
 | Chọn file | `file_picker`, `path_provider` |
 | State | `provider` |

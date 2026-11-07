@@ -59,9 +59,34 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
   - Tạo `backend/tests/test_file_routes.py` (13 tests) dùng thẳng bộ `testdata/` thật, không cần mock: `sample.txt`/`docx`/`pdf` → 200; `scanned.pdf` → 400 `PDF_SCANNED`; `big_11mb.pdf` → 413 `FILE_TOO_LARGE`; file `.doc` → 400 `FILE_UNSUPPORTED`; file rỗng → 400 `FILE_EMPTY`; `long_31000.txt` → 400 `TEXT_TOO_LONG`; `short_100.txt` → 200; thiếu `file` → 400 `VALIDATION_ERROR`; thiếu/sai header → 400/426; tên file tiếng Việt được giữ nguyên.
   - Toàn bộ **55 tests xanh trong 1.64s**.
   - Đã kiểm thử bằng curl multipart trên server dev: tất cả 7 file `sample.txt`/`docx`/`pdf`, `scanned.pdf`, `big_11mb.pdf`, `long_31000.txt`, `short_100.txt` đều trả đúng mã HTTP và `error_code` như dự kiến; nội dung trích ra tiếng Việt có dấu nguyên vẹn.
+- Bước 1C.1 (Kết nối Chọn tệp với backend):
+  - Thêm `file_picker: ^6.0.0` vào `mobile/pubspec.yaml`.
+  - Xây dựng `extractFile()` trong `mobile/lib/providers/summary_provider.dart`: mở file picker chỉ cho chọn `.txt`/`.docx`/`.pdf`, gọi API `/api/v1/files/extract` với multipart form data, nhận text và hiển thị trong ô soạn thảo để người dùng có thể sửa trước khi tóm tắt. Xử lý lỗi DioException và hiển thị message tiếng Việt.
+  - Cập nhật nút "Chọn tệp" trong `mobile/lib/views/home_view.dart` gọi `provider.extractFile()` và hiển thị SnackBar nếu có lỗi.
+  - `flutter analyze` đạt 100% không lỗi.
+- Bước 1C.2 (Thêm OCR với ML Kit on-device):
+  - Thêm `google_mlkit_text_recognition: ^0.11.0` và `image_picker: ^1.0.0` vào `mobile/pubspec.yaml`.
+  - Cấu hình `mobile/android/app/src/main/AndroidManifest.xml`: thêm quyền `CAMERA`, `READ_EXTERNAL_STORAGE` (maxSdkVersion 32), `READ_MEDIA_IMAGES`.
+  - Cấu hình `mobile/android/app/build.gradle.kts`: đặt `minSdk = 21` (ML Kit yêu cầu tối thiểu 21).
+  - Xây dựng `recognizeText(ImageSource source)` trong `mobile/lib/providers/summary_provider.dart`: chọn ảnh từ camera hoặc gallery, xử lý bằng ML Kit TextRecognizer với script Latin, trích xuất văn bản và hiển thị trong ô soạn thảo. Nếu không nhận diện được → hiển thị message gợi ý thử ảnh khác hoặc dùng Phương án B.
+  - Cập nhật nút "Quét ảnh" trong `mobile/lib/views/home_view.dart`: hiện bottom sheet chọn "Chụp ảnh" hoặc "Chọn từ thư viện", sau đó gọi `provider.recognizeText()` với ImageSource tương ứng.
+  - `flutter analyze` đạt 100% không lỗi.
 
 ## Đang dở / bước tiếp theo
-- 1C: Nối Flutter với backend (HomeView gọi `/files/extract` và `/summaries`) và đánh giá OCR tiếng Việt trên `ocr_vi.jpg` để quyết định có cần phương án B (Gemini Vision) hay không.
+- 1C.3: Triển khai Gemini Vision OCR (thay thế ML Kit on-device) và kiểm thử với `ocr_vi.jpg`.
+- 1C.4: Kiểm thử end-to-end trên máy Android thật (build debug APK, test 3 luồng nhập liệu, test các ca lỗi).
+
+## Thay đổi thiết kế (2026-11-07)
+- **OCR: ML Kit on-device → Gemini Vision API**
+  - Lý do: ML Kit Latin script không chính xác cho tiếng Việt (sai dấu nhiều, tự xuống dòng vô lý).
+  - Gemini Vision hiểu ngữ cảnh tiếng Việt tốt hơn, ít sai dấu.
+  - Chi phí: ~$0.0016/lượt OCR, free tier đủ cho 50-100 lượt/ngày.
+  - Rate limit riêng: 20 lượt OCR/ngày/IP (không trừ vào quota tóm tắt).
+  
+- **Định dạng tóm tắt: Đoạn văn + Bullet points → Chỉ đoạn văn**
+  - Lý do: User yêu cầu (Plan A) - chỉ trả về 1 đoạn văn tóm tắt, không có 3-5 ý chính riêng.
+  - Đã cập nhật prompt Gemini trong PROMPTS.md mục 1.
+  - Ảnh hưởng: SPEC.md mục 1.2, PROMPTS.md mục 1, PHASES.md DoD GĐ1.
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.

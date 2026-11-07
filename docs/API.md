@@ -44,7 +44,7 @@ Mọi exception không lường trước → `500 INTERNAL_ERROR` (không lộ s
 | POST | `/auth/forgot-password` | Không | 4 | Gửi OTP đặt lại mật khẩu |
 | POST | `/auth/reset-password` | Không | 4 | Đặt mật khẩu mới bằng OTP |
 | GET | `/auth/me` | JWT | 4 | Thông tin tài khoản |
-| POST | `/ocr` *(chỉ phương án B)* | Device/JWT | 1 | Gemini Vision OCR |
+| POST | `/ocr` | Device/JWT | 1 | Gemini Vision OCR |
 
 ## 4. Chi tiết & JSON mẫu
 
@@ -82,6 +82,17 @@ Response:
   "data": { "text": "...", "char_count": 5230, "filename": "bai.docx" } }
 ```
 Lỗi: `FILE_TOO_LARGE` (413), `FILE_UNSUPPORTED`, `PDF_SCANNED`, `TEXT_TOO_LONG`, `FILE_EMPTY`.
+
+### POST `/ocr` (multipart, field `image`)
+Request: Ảnh chụp văn bản (jpeg/png/webp, tối đa 4MB).
+Response:
+```json
+{ "success": true, "message": "Xử lý thành công",
+  "data": { "text": "Nội dung văn bản trích xuất từ ảnh...", "char_count": 1234 } }
+```
+Lỗi: `FILE_TOO_LARGE` (413), `FILE_UNSUPPORTED` (sai định dạng), `OCR_NO_TEXT` (không nhận diện được chữ), `RATE_LIMITED` (429, vượt 20 lượt/ngày/IP).
+
+Ghi chú: OCR dùng Gemini Vision API, chịu giới hạn rate limit riêng (20 lượt/ngày/IP) và không trừ vào quota tóm tắt.
 
 ### GET `/usage`
 ```json

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import '../providers/summary_provider.dart';
 
@@ -151,13 +152,7 @@ class _HomeViewState extends State<HomeView> {
                 onPressed: provider.isLoading
                     ? null
                     : () {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Tính năng Quét ảnh OCR đang được kết nối.'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                        _showImageSourceSheet(context, provider);
                       },
               ),
             ),
@@ -169,14 +164,18 @@ class _HomeViewState extends State<HomeView> {
                 color: AppConstants.secondaryColor,
                 onPressed: provider.isLoading
                     ? null
-                    : () {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Tính năng Trích xuất file đang được kết nối.'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
+                    : () async {
+                        await provider.extractFile();
+                        if (context.mounted && provider.errorMessage != null) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(provider.errorMessage!),
+                              duration: const Duration(seconds: 3),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
                       },
               ),
             ),
@@ -464,13 +463,32 @@ class _HomeViewState extends State<HomeView> {
             ? () async {
                 FocusScope.of(context).unfocus();
                 await provider.summarize();
-                if (context.mounted && provider.errorMessage != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(provider.errorMessage!),
-                      backgroundColor: AppConstants.errorColor,
-                    ),
-                  );
+                if (context.mounted) {
+                  if (provider.errorMessage != null) {
+                    // Hiển thị SnackBar lỗi
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(provider.errorMessage!),
+                        backgroundColor: AppConstants.errorColor,
+                      ),
+                    );
+                  } else if (provider.summaryResult != null) {
+                    // Hiển thị SnackBar thành công với độ dài
+                    final lengthLabels = {
+                      'short': 'Ngắn',
+                      'medium': 'Vừa',
+                      'long': 'Dài',
+                    };
+                    final lengthLabel = lengthLabels[provider.selectedLength] ?? 'Vừa';
+                    
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Đã tóm tắt văn bản của bạn ($lengthLabel)'),
+                        backgroundColor: AppConstants.successColor,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 }
               }
             : null,
@@ -570,6 +588,38 @@ class _HomeViewState extends State<HomeView> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Hiển thị bottom sheet chọn nguồn ảnh (Camera hoặc Gallery) cho OCR
+  void _showImageSourceSheet(BuildContext context, SummaryProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Chụp ảnh'),
+                onTap: () {
+                  Navigator.pop(context);
+                  provider.recognizeText(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Chọn từ thư viện'),
+                onTap: () {
+                  Navigator.pop(context);
+                  provider.recognizeText(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

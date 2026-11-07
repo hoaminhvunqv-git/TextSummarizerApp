@@ -92,8 +92,8 @@ class TfidfService:
             sorted_indices = sorted(top_k_indices)
             selected_sentences = [sentences[i] for i in sorted_indices]
 
-        # Ghép các câu thành đoạn tóm tắt
-        summary_text = " ".join(selected_sentences)
+        # Ghép các câu thành đoạn tóm tắt với đánh số (phân biệt với Gemini)
+        summary_text = "\n".join([f"{i+1}. {sentence}" for i, sentence in enumerate(selected_sentences)])
 
         # Sinh title fallback: câu đầu tiên cắt <= 60 ký tự (SPEC 5.6)
         first_sentence = sentences[0] if sentences else normalized_text

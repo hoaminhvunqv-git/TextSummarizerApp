@@ -9,6 +9,7 @@ class ErrorCode:
     FILE_UNSUPPORTED = "FILE_UNSUPPORTED"
     FILE_EMPTY = "FILE_EMPTY"
     PDF_SCANNED = "PDF_SCANNED"
+    OCR_NO_TEXT = "OCR_NO_TEXT"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     INVALID_DEVICE_ID = "INVALID_DEVICE_ID"
     UNAUTHORIZED = "UNAUTHORIZED"
@@ -36,6 +37,7 @@ ERROR_DEFINITIONS = {
     ErrorCode.FILE_UNSUPPORTED: (400, "Chỉ hỗ trợ file .txt, .docx, .pdf."),
     ErrorCode.FILE_EMPTY: (400, "File không có nội dung văn bản."),
     ErrorCode.PDF_SCANNED: (400, "Không thể đọc văn bản từ file này. Hãy dùng tính năng Quét ảnh OCR."),
+    ErrorCode.OCR_NO_TEXT: (400, "Không nhận diện được văn bản từ ảnh. Vui lòng thử ảnh khác."),
     ErrorCode.VALIDATION_ERROR: (400, "Dữ liệu gửi lên không hợp lệ."),
     ErrorCode.INVALID_DEVICE_ID: (400, "Thiết bị không hợp lệ. Hãy khởi động lại ứng dụng."),
     ErrorCode.UNAUTHORIZED: (401, "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại."),

@@ -9,7 +9,7 @@ for p in (str(BASE_DIR), str(REPO_ROOT)):
         sys.path.insert(0, p)
 
 import logging
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
@@ -21,6 +21,7 @@ try:
     from backend.routes.system_routes import system_bp
     from backend.routes.summary_routes import summary_bp
     from backend.routes.file_routes import file_bp
+    from backend.routes.ocr_routes import ocr_bp
 except ImportError:
     from config import Config
     from extensions import limiter
@@ -29,6 +30,7 @@ except ImportError:
     from routes.system_routes import system_bp
     from routes.summary_routes import summary_bp
     from routes.file_routes import file_bp
+    from routes.ocr_routes import ocr_bp
 
 # Cấu hình logging cơ bản (không log nội dung người dùng theo CLAUDE.md)
 logging.basicConfig(
@@ -40,6 +42,7 @@ logger = logging.getLogger("text_summarizer")
 
 def create_app(config_class=Config) -> Flask:
     """Application factory khởi tạo ứng dụng Flask."""
+    print("=== CREATING FLASK APP ===")
     app = Flask(__name__)
     app.config.from_object(config_class)
 
@@ -56,6 +59,12 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(system_bp)
     app.register_blueprint(summary_bp)
     app.register_blueprint(file_bp)
+    app.register_blueprint(ocr_bp)
+    
+    # Test: Register simple route
+    @app.route("/test-ocr", methods=["GET", "POST"])
+    def test_ocr():
+        return {"success": True, "message": "Test OCR route"}
 
     # Đăng ký Global Error Handlers
     @app.errorhandler(AppError)
@@ -70,6 +79,7 @@ def create_app(config_class=Config) -> Flask:
     @app.errorhandler(HTTPException)
     def handle_http_exception(err: HTTPException):
         """Bắt và chuyển đổi các lỗi HTTP chuẩn sang format JSON của dự án."""
+        logger.error(f"HTTPException: {err.code} {err.description} for {request.method} {request.path}")
         status_code = err.code or 500
         if status_code == 404:
             return error_response(

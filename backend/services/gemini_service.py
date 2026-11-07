@@ -42,7 +42,7 @@ Field requirements:
 - "language": "vi" or "en".
 - "title": a concise title, at most 12 words.
 - "description": one sentence, at most 25 words.
-- "summary": a summary paragraph, then a blank line, then 3 to 5 key points, each starting with "- ".
+- "summary": a single paragraph summarizing the document. No bullet points, no lists.
   Paragraph length limit: {WORD_LIMIT} words."""
 
 SUMMARY_SCHEMA = {

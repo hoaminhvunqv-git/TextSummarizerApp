@@ -32,11 +32,11 @@
 5. Nút gửi bị vô hiệu hóa khi đang xử lý.
 
 ### 1C. Nối và kiểm thử
-Chạy bộ `testdata/`; **đánh giá OCR tiếng Việt** (`ocr_vi.jpg`) và quyết định có cần phương án B hay không.
+Chạy bộ `testdata/`; **kiểm thử OCR tiếng Việt** qua Gemini Vision API (`ocr_vi.jpg`).
 
 ### ✅ DoD Giai đoạn 1
 - [ ] curl: `en_250.txt` → 201, `language=en`, `source=gemini`.
-- [ ] curl: `vi_500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (đoạn + 3–5 gạch đầu dòng).
+- [ ] curl: `vi_500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (1 đoạn văn duy nhất).
 - [ ] curl: `short_100.txt` → 400 `TEXT_TOO_SHORT`; `long_31000.txt` → 400 `TEXT_TOO_LONG`.
 - [ ] Đặt sai `GEMINI_API_KEY` → vẫn 201 với `source=tfidf`.
 - [ ] `injection.txt` → vẫn ra bản tóm tắt bình thường.
