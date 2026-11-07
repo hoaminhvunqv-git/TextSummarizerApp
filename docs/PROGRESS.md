@@ -25,6 +25,8 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
     + Tích hợp tính năng "Xem thêm ˅ / Thu gọn ˄" cho ô soạn thảo khi vượt quá 8 dòng, kèm ShaderMask gradient fade ở đáy khi thu gọn.
     + Cập nhật hintText ô soạn thảo: "Nhận tóm tắt từ 200 đến 30.000 ký tự".
   - `flutter analyze` đạt 100% không lỗi.
+  - Thêm nút "Chia sẻ" bên cạnh nút "Sao chép" trong màn kết quả tóm tắt (dùng `share_plus` package).
+  - Thay nút icon "Xóa nội dung" nhỏ bằng nút ribbon "Xóa tất cả" có nhãn rõ ràng, chỉ hiện khi ô soạn thảo có nội dung.
 - Bước 1A.2 (Text utils & Validators Backend):
   - Xây dựng `backend/utils/text_utils.py`: Chuẩn hóa Unicode NFC, đếm ký tự thực tế, tách câu regex tiếng Việt/Anh, nhận diện ngôn ngữ ưu thế (`vi`/`en`).
   - Xây dựng `backend/utils/validators.py`: Validate độ dài 200–30.000 ký tự (`TEXT_TOO_SHORT`, `TEXT_TOO_LONG`), validate tham số `length` (`short`, `medium`, `long`), validate `X-Device-ID` chuẩn UUID v4 (`INVALID_DEVICE_ID`), validate `X-App-Version` so sánh phiên bản semver với `MIN_APP_VERSION` (HTTP 426 `UPDATE_REQUIRED`), và decorator `@require_device_and_version`.

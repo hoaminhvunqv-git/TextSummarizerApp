@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:share_plus/share_plus.dart';
 import '../core/constants.dart';
 import '../providers/summary_provider.dart';
 
@@ -180,18 +181,21 @@ class _HomeViewState extends State<HomeView> {
               ),
             ),
             if (provider.textController.text.isNotEmpty) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Xóa nội dung',
-                icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 20),
-                onPressed: provider.isLoading
-                    ? null
-                    : () {
-                        provider.clearText();
-                        setState(() {
-                          _isExpanded = false;
-                        });
-                      },
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildRibbonButton(
+                  icon: Icons.delete_sweep_rounded,
+                  label: 'Xóa tất cả',
+                  color: Colors.red.shade400,
+                  onPressed: provider.isLoading
+                      ? null
+                      : () {
+                          provider.clearText();
+                          setState(() {
+                            _isExpanded = false;
+                          });
+                        },
+                ),
               ),
             ],
           ],
@@ -530,18 +534,30 @@ class _HomeViewState extends State<HomeView> {
                     ),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Sao chép kết quả',
-                  icon: const Icon(Icons.copy_rounded, size: 20, color: AppConstants.primaryColor),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: summary));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Đã sao chép bản tóm tắt vào bộ nhớ tạm.'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Sao chép kết quả',
+                      icon: const Icon(Icons.copy_rounded, size: 20, color: AppConstants.primaryColor),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: summary));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Đã sao chép bản tóm tắt vào bộ nhớ tạm.'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: 'Chia sẻ kết quả',
+                      icon: const Icon(Icons.share_rounded, size: 20, color: AppConstants.primaryColor),
+                      onPressed: () {
+                        Share.share(summary);
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
