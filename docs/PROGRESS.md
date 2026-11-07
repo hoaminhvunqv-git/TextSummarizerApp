@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1A — Bước 1A.5 đã xong. Chuẩn bị bước 1A.6 (`POST /api/v1/files/extract`).
+Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutter với backend và đánh giá OCR tiếng Việt).
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -49,9 +49,17 @@ Giai đoạn 1A — Bước 1A.5 đã xong. Chuẩn bị bước 1A.6 (`POST /ap
   - Thêm `RATE_LIMIT_PER_MINUTE`, `RATELIMIT_ENABLED`, `RATELIMIT_STORAGE_URI` vào `config.py` và `.env.example`.
   - Tạo `backend/tests/test_summary_routes.py` (20 tests, mock `GeminiService` nên không tốn quota): 201 vi/en, chuyển tiếp `length`, mặc định `medium`, `TEXT_TOO_SHORT`/`TEXT_TOO_LONG`, `VALIDATION_ERROR`, `INVALID_DEVICE_ID`, `UPDATE_REQUIRED`, fallback tfidf, injection, emoji, 429 theo IP và `/health` được exempt. Toàn bộ **42 tests xanh trong 2.19s**.
   - Đã kiểm thử bằng curl thật trên server dev: `vi_500` → 201 `source=gemini` `language=vi` (đoạn + 4 gạch đầu dòng); `en_250` → 201 `source=gemini` `language=en`; `injection.txt` → 201 vẫn tóm tắt bình thường, không bị lừa; `short_100` → 400 `TEXT_TOO_SHORT`; `long_31000` → 400 `TEXT_TOO_LONG`; thiếu `X-Device-ID` → 400 `INVALID_DEVICE_ID`; `X-App-Version: 0.9.0` → 426 `UPDATE_REQUIRED`; request thứ 31 trong 1 phút → 429 `RATE_LIMITED`; 35 request `/health` đều 200; chạy server với key sai → vẫn 201 `source=tfidf` trong 0.65s.
+- Bước 1A.6 (Trích xuất văn bản từ file):
+  - Thêm `python-docx>=1.1.0` và `pypdf>=4.0.0` vào `backend/requirements.txt` (bản cài thực tế 1.2.0 và 7.0.0).
+  - Thêm `MAX_CONTENT_LENGTH = MAX_FILE_MB * 1024 * 1024` vào `config.py` để Flask tự ném 413 khi file vượt 10MB (handler 413 có sẵn trong `app.py` đổi thành `FILE_TOO_LARGE`).
+  - Xây dựng `backend/services/file_service.py`: TXT thử 4 encoding theo thứ tự `utf-8` → `utf-8-sig` → `cp1258` → `latin-1` (SPEC 5.2); DOCX lấy cả paragraph và nội dung ô bảng (`| ` phân cách hàng); PDF dùng `pypdf.PdfReader`, nếu không trích được chữ hoặc file lỗi → `PDF_SCANNED`. Chuẩn hóa NFC + strip trước khi trả về.
+  - Xây dựng `backend/routes/file_routes.py`: `POST /api/v1/files/extract` nhận multipart field `file`, `@require_device_and_version`, trả `{text, char_count, filename}`. Không chặn tối thiểu 200 ký tự (API.md không liệt kê `TEXT_TOO_SHORT`), chỉ chặn tối đa 30.000. Tên file giữ nguyên dấu tiếng Việt (không dùng `secure_filename` vì không ghi xuống đĩa).
+  - Tạo `backend/tests/test_file_routes.py` (13 tests) dùng thẳng bộ `testdata/` thật, không cần mock: `sample.txt`/`docx`/`pdf` → 200; `scanned.pdf` → 400 `PDF_SCANNED`; `big_11mb.pdf` → 413 `FILE_TOO_LARGE`; file `.doc` → 400 `FILE_UNSUPPORTED`; file rỗng → 400 `FILE_EMPTY`; `long_31000.txt` → 400 `TEXT_TOO_LONG`; `short_100.txt` → 200; thiếu `file` → 400 `VALIDATION_ERROR`; thiếu/sai header → 400/426; tên file tiếng Việt được giữ nguyên.
+  - Toàn bộ **55 tests xanh trong 1.64s**.
+  - Đã kiểm thử bằng curl multipart trên server dev: tất cả 7 file `sample.txt`/`docx`/`pdf`, `scanned.pdf`, `big_11mb.pdf`, `long_31000.txt`, `short_100.txt` đều trả đúng mã HTTP và `error_code` như dự kiến; nội dung trích ra tiếng Việt có dấu nguyên vẹn.
 
 ## Đang dở / bước tiếp theo
-- 1A.6: `POST /api/v1/files/extract` (TXT/DOCX/PDF, giới hạn 10MB, `PDF_SCANNED`, `FILE_EMPTY`, `FILE_UNSUPPORTED`). Cần thêm `python-docx` và `pypdf` (đều có trong SPEC 2.2).
+- 1C: Nối Flutter với backend (HomeView gọi `/files/extract` và `/summaries`) và đánh giá OCR tiếng Việt trên `ocr_vi.jpg` để quyết định có cần phương án B (Gemini Vision) hay không.
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -70,6 +78,9 @@ Giai đoạn 1A — Bước 1A.5 đã xong. Chuẩn bị bước 1A.6 (`POST /ap
 - `created_at` dùng `timezone(timedelta(hours=7))` thay vì `ZoneInfo("Asia/Ho_Chi_Minh")`: Việt Nam không có DST nên kết quả y hệt, tránh phải thêm package `tzdata` trên Windows (ngoài danh sách SPEC 2.2).
 - Đặt `limiter` trong `extensions.py` thay vì `app.py` để routes import được, tránh import vòng.
 - Đổi model mặc định sang `gemini-3.5-flash`. Kiểm tra qua `models.list()` ngày 2026-11-07: `gemini-2.5-flash` (default cũ) đã bị khai tử, trả **404 NOT_FOUND**; `gemini-3.7-flash` và `gemini-3.8-flash` trả 504 hoặc rất chậm (prompt "Say OK" mất 38s); `gemini-3.5-flash` phản hồi 2.8s, `gemini-3.1-flash-lite` 1.1s.
+- PDF hỏng hoặc bị mã hóa → trả `PDF_SCANNED` (không có mã lỗi riêng trong API.md; message *"Không thể đọc văn bản từ file này. Hãy dùng tính năng Quét ảnh OCR."* vẫn đúng với người dùng).
+- DOCX trích cả nội dung ô bảng, phân cách hàng bằng ` | ` để tài liệu tiếng Việt dạng biểu mẫu không mất chữ.
+- `filename` trả về giữ nguyên dấu tiếng Việt: chỉ lấy phần tên cuối (`Path(...).name`) và cắt 255 ký tự, không dùng `secure_filename` vì không ghi file xuống đĩa.
 
 ## Lỗi đã biết / việc cần nhớ
 - Gemini thỉnh thoảng trả 503/504 tạm thời: trong lúc test, `vi_500` bị 503 hai lần liên tiếp nên fallback tfidf, gọi lại ngay sau đó thì 200 `source=gemini`. Fallback hoạt động đúng SPEC 5.6, nhưng cần chạy lại vài lần khi đối chiếu DoD `source=gemini`, đừng kết luận sai là lỗi code.
