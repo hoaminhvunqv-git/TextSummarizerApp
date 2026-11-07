@@ -261,7 +261,7 @@ class _HomeViewState extends State<HomeView> {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
-                hintText: 'Nhập, dán hoặc quét văn bản cần tóm tắt tại đây...\n(Tối thiểu 200 đến 30.000 ký tự)',
+                hintText: 'Nhập, dán hoặc quét văn bản cần tóm tắt tại đây...\n(Nhận tóm tắt từ 200 đến 30.000 ký tự)',
               ),
             );
 
