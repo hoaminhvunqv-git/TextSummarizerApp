@@ -2,15 +2,18 @@ from flask import Blueprint, jsonify
 
 try:
     from backend.config import Config
+    from backend.extensions import limiter
     from backend.utils.responses import success_response
 except ImportError:
     from config import Config
+    from extensions import limiter
     from utils.responses import success_response
 
 system_bp = Blueprint("system", __name__)
 
 
 @system_bp.route("/health", methods=["GET"])
+@limiter.exempt
 def health():
     """Kiểm tra máy chủ còn sống (không prefix /api/v1, không auth, không đụng DB)."""
     return jsonify({"status": "ok"}), 200

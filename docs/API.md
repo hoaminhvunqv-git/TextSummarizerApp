@@ -73,6 +73,8 @@ Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
 }
 ```
 
+Ghi chú GĐ1: `id` = `null` (chưa lưu DB), `usage.summary_remaining` và `usage.quiz_remaining` = `null` (chưa theo dõi quota). Có giá trị thật từ GĐ2.
+
 ### POST `/files/extract` (multipart, field `file`)
 Response:
 ```json

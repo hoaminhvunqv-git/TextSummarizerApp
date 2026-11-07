@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1A — Bước 1A.4 đã xong. Chuẩn bị bước 1A.5 (`POST /api/v1/summaries` + Flask-Limiter theo IP).
+Giai đoạn 1A — Bước 1A.5 đã xong. Chuẩn bị bước 1A.6 (`POST /api/v1/files/extract`).
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -41,10 +41,17 @@ Giai đoạn 1A — Bước 1A.4 đã xong. Chuẩn bị bước 1A.5 (`POST /ap
   - Client Gemini là singleton, có `set_client()` để mock trong unit test.
   - Xây dựng `backend/tests/test_gemini.py`: fallback khi không có API key, mock thành công, retry lần 2 thành công, hết retry → fallback, và 1 test gọi API thật kiểm tra phòng thủ prompt injection với `injection.txt`.
   - Toàn bộ 22 tests trong `pytest` đạt 100% xanh trong 2.23s (test gọi API thật đã được tách riêng, xem mục "Cách chạy và test").
+- Bước 1A.5 (Endpoint tóm tắt + chống spam IP):
+  - Thêm `Flask-Limiter>=3.5.0` vào `backend/requirements.txt` (bản cài thực tế 4.1.1).
+  - Tạo `backend/extensions.py` chứa `limiter` khởi tạo chưa gắn app để routes import được mà không gây import vòng với `app.py`; `app.py` gọi `limiter.init_app(app)`.
+  - Tạo `backend/routes/summary_routes.py`: `POST /api/v1/summaries` → `@require_device_and_version` → `validate_summary_input` → `GeminiService.summarize` → 201. Trả `id: null`, `original_length` sau NFC, `created_at` offset `+07:00`, `usage` gồm 2 trường `null`.
+  - `@limiter.exempt` cho `/health` để Render ping không bị đếm. Giới hạn mặc định 30 request/phút/IP, vượt → 429 `RATE_LIMITED` (handler 429 có sẵn trong `app.py`).
+  - Thêm `RATE_LIMIT_PER_MINUTE`, `RATELIMIT_ENABLED`, `RATELIMIT_STORAGE_URI` vào `config.py` và `.env.example`.
+  - Tạo `backend/tests/test_summary_routes.py` (20 tests, mock `GeminiService` nên không tốn quota): 201 vi/en, chuyển tiếp `length`, mặc định `medium`, `TEXT_TOO_SHORT`/`TEXT_TOO_LONG`, `VALIDATION_ERROR`, `INVALID_DEVICE_ID`, `UPDATE_REQUIRED`, fallback tfidf, injection, emoji, 429 theo IP và `/health` được exempt. Toàn bộ **42 tests xanh trong 2.19s**.
+  - Đã kiểm thử bằng curl thật trên server dev: `vi_500` → 201 `source=gemini` `language=vi` (đoạn + 4 gạch đầu dòng); `en_250` → 201 `source=gemini` `language=en`; `injection.txt` → 201 vẫn tóm tắt bình thường, không bị lừa; `short_100` → 400 `TEXT_TOO_SHORT`; `long_31000` → 400 `TEXT_TOO_LONG`; thiếu `X-Device-ID` → 400 `INVALID_DEVICE_ID`; `X-App-Version: 0.9.0` → 426 `UPDATE_REQUIRED`; request thứ 31 trong 1 phút → 429 `RATE_LIMITED`; 35 request `/health` đều 200; chạy server với key sai → vẫn 201 `source=tfidf` trong 0.65s.
 
 ## Đang dở / bước tiếp theo
-- 1A.5: `POST /api/v1/summaries` (chưa lưu DB, `id: null`) + `Flask-Limiter` giới hạn theo IP. Cần thêm `Flask-Limiter` vào `requirements.txt` (đã có trong danh sách cho phép ở SPEC 2.2).
-- Chưa chốt: ở GĐ1 chưa có quota/DB thì trường `usage` trong response nên bỏ hẳn (thêm lại ở GĐ2) hay trả hằng 20/20.
+- 1A.6: `POST /api/v1/files/extract` (TXT/DOCX/PDF, giới hạn 10MB, `PDF_SCANNED`, `FILE_EMPTY`, `FILE_UNSUPPORTED`). Cần thêm `python-docx` và `pypdf` (đều có trong SPEC 2.2).
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -59,9 +66,14 @@ Giai đoạn 1A — Bước 1A.4 đã xong. Chuẩn bị bước 1A.5 (`POST /ap
 - Giảm timeout Gemini AI từ 30s xuống 15s để tối ưu tốc độ phản hồi cho người dùng, cập nhật đồng bộ toàn bộ tài liệu dự án (`SPEC.md`, `PROMPTS.md`, `PHASES.md`, `PROGRESS.md`, `backend/.env.example`, `backend/config.py`).
 - Không log `str(e)` khi gọi Gemini thất bại, chỉ log `type(e).__name__`: thông báo lỗi của SDK có thể chứa lại nội dung văn bản người dùng (CLAUDE.md cấm log nội dung).
 - Tách test gọi Gemini API thật sang marker `live` trong `pytest.ini` và mặc định loại trừ (`addopts = -m "not live"`) để `pytest` thường không tốn quota và chạy nhanh (75s → 2.2s).
+- Giữ trường `usage` trong response GĐ1 với giá trị `null` (không bỏ, không trả hằng 20/20): cùng nguyên tắc "định nghĩa đủ cấu trúc, phần chưa dùng để NULL" như `schema.sql` làm với `user_id`, và giống cách `API.md` đã quy định `id = null` ở GĐ1. Sang GĐ2 chỉ điền giá trị, không phải sửa model Dart hay UI.
+- `created_at` dùng `timezone(timedelta(hours=7))` thay vì `ZoneInfo("Asia/Ho_Chi_Minh")`: Việt Nam không có DST nên kết quả y hệt, tránh phải thêm package `tzdata` trên Windows (ngoài danh sách SPEC 2.2).
+- Đặt `limiter` trong `extensions.py` thay vì `app.py` để routes import được, tránh import vòng.
+- Đổi model mặc định sang `gemini-3.5-flash`. Kiểm tra qua `models.list()` ngày 2026-11-07: `gemini-2.5-flash` (default cũ) đã bị khai tử, trả **404 NOT_FOUND**; `gemini-3.7-flash` và `gemini-3.8-flash` trả 504 hoặc rất chậm (prompt "Say OK" mất 38s); `gemini-3.5-flash` phản hồi 2.8s, `gemini-3.1-flash-lite` 1.1s.
 
 ## Lỗi đã biết / việc cần nhớ
-- (chưa có)
+- Gemini thỉnh thoảng trả 503/504 tạm thời: trong lúc test, `vi_500` bị 503 hai lần liên tiếp nên fallback tfidf, gọi lại ngay sau đó thì 200 `source=gemini`. Fallback hoạt động đúng SPEC 5.6, nhưng cần chạy lại vài lần khi đối chiếu DoD `source=gemini`, đừng kết luận sai là lỗi code.
+- Model Gemini 3.x mặc định bật "thinking" nên dễ chậm; chưa thêm `thinking_config` vì `gemini-3.5-flash` đã đủ nhanh (~8–12s cho văn bản 250–500 ký tự). Nếu sau này gặp văn bản 30.000 ký tự vượt timeout 15s thì cân nhắc lại.
 
 ## Cách chạy và test hiện tại
 - Chạy backend:
@@ -86,3 +98,23 @@ Giai đoạn 1A — Bước 1A.4 đã xong. Chuẩn bị bước 1A.5 (`POST /ap
   cd mobile
   flutter run
   ```
+- Kiểm thử endpoint tóm tắt bằng curl (Git Bash, chạy từ `backend/`):
+  ```bash
+  # Tạo body JSON từ testdata (Windows: ghi vào thư mục temp, không có /tmp)
+  ./.venv/Scripts/python -c "
+  import json, pathlib, tempfile
+  d = pathlib.Path(tempfile.gettempdir())/'tsa_curl'; d.mkdir(exist_ok=True)
+  for n in ['vi_500','en_250','short_100','long_31000','injection']:
+      t = pathlib.Path('../testdata/'+n+'.txt').read_text(encoding='utf-8')
+      (d/(n+'.json')).write_text(json.dumps({'text':t,'length':'medium'}, ensure_ascii=False), encoding='utf-8')
+  print(d.as_posix())"
+
+  D=C:/Users/X/AppData/Local/Temp/tsa_curl
+  curl -s -X POST http://localhost:5000/api/v1/summaries \
+    -H "Content-Type: application/json" \
+    -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" \
+    -H "X-App-Version: 1.0.0" -d @"$D/vi_500.json"
+  ```
+  Mong đợi: 201, `data.source=gemini`, `data.language=vi`, `id=null`, `usage` gồm 2 trường `null`.
+  Test fallback: chạy server khác cổng với key sai — `PORT=5001 GEMINI_API_KEY=sai python app.py` → vẫn 201 nhưng `source=tfidf`.
+  Lưu ý giới hạn 30 request/phút/IP khi curl nhiều lần liên tiếp (nghỉ 1 phút hoặc đặt `RATELIMIT_ENABLED=0`).

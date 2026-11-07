@@ -5,7 +5,7 @@
 
 ## 0. Cấu hình (`config.py`, đọc từ env)
 ```
-GEMINI_MODEL=gemini-2.5-flash      # kiểm tra tên model mới nhất
+GEMINI_MODEL=gemini-3.5-flash      # đã kiểm tra qua models.list() ngày 2026-11-07; gemini-2.5-flash đã bị khai tử (404)
 GEMINI_TIMEOUT_SECONDS=15
 GEMINI_MAX_RETRY=1                 # retry 1 lần khi JSON hỏng/rỗng, sau đó fallback
 ```

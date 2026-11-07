@@ -15,14 +15,18 @@ from werkzeug.exceptions import HTTPException
 
 try:
     from backend.config import Config
+    from backend.extensions import limiter
     from backend.utils.errors import AppError, ErrorCode
     from backend.utils.responses import error_response
     from backend.routes.system_routes import system_bp
+    from backend.routes.summary_routes import summary_bp
 except ImportError:
     from config import Config
+    from extensions import limiter
     from utils.errors import AppError, ErrorCode
     from utils.responses import error_response
     from routes.system_routes import system_bp
+    from routes.summary_routes import summary_bp
 
 # Cấu hình logging cơ bản (không log nội dung người dùng theo CLAUDE.md)
 logging.basicConfig(
@@ -43,8 +47,12 @@ def create_app(config_class=Config) -> Flask:
     # Bật CORS cho môi trường dev/web test (mobile app giao tiếp qua HTTPS không cần CORS)
     CORS(app)
 
+    # Giới hạn spam theo IP (quota nghiệp vụ theo ngày thuộc GĐ2)
+    limiter.init_app(app)
+
     # Đăng ký Blueprints
     app.register_blueprint(system_bp)
+    app.register_blueprint(summary_bp)
 
     # Đăng ký Global Error Handlers
     @app.errorhandler(AppError)

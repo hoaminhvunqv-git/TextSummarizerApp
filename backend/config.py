@@ -22,7 +22,7 @@ class Config:
 
     # AI (Gemini)
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
     GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", 15))
     GEMINI_MAX_RETRY = int(os.getenv("GEMINI_MAX_RETRY", 1))
 
@@ -45,3 +45,8 @@ class Config:
     MAX_FILE_MB = 10
     DAILY_SUMMARY_LIMIT = 20
     DAILY_QUIZ_LIMIT = 20
+
+    # Chống spam theo IP (SPEC 5.5). Quota nghiệp vụ theo ngày nằm ở bảng usage_quota (GĐ2).
+    RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", 30))
+    RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "1").lower() in ("1", "true")
+    RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
