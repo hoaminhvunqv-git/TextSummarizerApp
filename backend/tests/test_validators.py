@@ -63,7 +63,7 @@ def test_emoji_and_special_chars():
 def test_detect_language():
     """Kiểm tra tự nhận diện ngôn ngữ vi/en theo SPEC 1.1."""
     vi_text = read_testdata("vi_500.txt")
-    en_text = read_testdata("en_250.txt")
+    en_text = read_testdata("en_400.txt")
     assert detect_language(vi_text) == "vi"
     assert detect_language(en_text) == "en"
 
@@ -85,26 +85,52 @@ def test_split_sentences():
 # ============================================================================
 
 def test_validate_summary_input_valid():
-    """Kiểm tra văn bản hợp lệ 250 và 500 ký tự."""
-    en_250 = read_testdata("en_250.txt")
-    vi_500 = read_testdata("vi_500.txt")
+    """Kiểm tra văn bản hợp lệ theo ngưỡng 400 ký tự."""
+    en_400 = read_testdata("en_400.txt")
+    vi_1200 = read_testdata("vi_1200.txt")
 
-    text, length = validate_summary_input(en_250, "short")
+    text, length = validate_summary_input(en_400, "short")
     assert length == "short"
-    assert len(text) >= 200
+    assert len(text) >= 400
 
-    text_vi, length_vi = validate_summary_input(vi_500, None)
+    text_vi, length_vi = validate_summary_input(vi_1200, None)
     assert length_vi == "medium"  # Mặc định là medium
-    assert len(text_vi) >= 200
+    assert len(text_vi) >= 1000
 
 
 def test_validate_summary_input_too_short():
-    """Kiểm tra file testdata/short_100.txt (100 ký tự) trả về TEXT_TOO_SHORT."""
+    """Kiểm tra văn bản dưới 400 ký tự trả về TEXT_TOO_SHORT."""
     short_text = read_testdata("short_100.txt")
     with pytest.raises(AppError) as exc_info:
         validate_summary_input(short_text)
     assert exc_info.value.error_code == ErrorCode.TEXT_TOO_SHORT
     assert exc_info.value.status_code == 400
+
+
+def test_locked_length_tiers():
+    """Mốc Vừa cần >= 1.000 ký tự, mốc Dài cần >= 2.000 ký tự (SPEC 5.1)."""
+    en_400 = read_testdata("en_400.txt")
+    vi_1200 = read_testdata("vi_1200.txt")
+
+    # 455 ký tự: chỉ mở mốc short
+    for tier in ("medium", "long"):
+        with pytest.raises(AppError) as exc_info:
+            validate_summary_input(en_400, tier)
+        assert exc_info.value.error_code == ErrorCode.LENGTH_NOT_UNLOCKED
+        assert exc_info.value.status_code == 400
+
+    # 1.272 ký tự: mở short + medium, vẫn khoá long
+    text, length = validate_summary_input(vi_1200, "medium")
+    assert length == "medium"
+    with pytest.raises(AppError) as exc_info:
+        validate_summary_input(vi_1200, "long")
+    assert exc_info.value.error_code == ErrorCode.LENGTH_NOT_UNLOCKED
+
+    # 2.385 ký tự: mở cả ba
+    vi_2500 = read_testdata("vi_2500.txt")
+    for tier in ("short", "medium", "long"):
+        _, resolved = validate_summary_input(vi_2500, tier)
+        assert resolved == tier
 
 
 def test_validate_summary_input_too_long():

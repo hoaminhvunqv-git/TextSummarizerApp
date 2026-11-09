@@ -40,12 +40,42 @@ class Config:
 
     # Business Limits & App Version (theo docs/SPEC.md & docs/API.md)
     MIN_APP_VERSION = "1.0.0"
-    MIN_CHARS = 200
+    MIN_CHARS = 400
     MAX_CHARS = 30000
     MAX_FILE_MB = 10
     MAX_CONTENT_LENGTH = MAX_FILE_MB * 1024 * 1024
     DAILY_SUMMARY_LIMIT = 20
     DAILY_QUIZ_LIMIT = 20
+
+    # Ngưỡng số ký tự tối thiểu của bản gốc để mở khoá từng mốc tóm tắt (SPEC 5.1).
+    # Derivation: ~120 ký tự/câu -> Ngắn >= 3 câu, Vừa >= 8 câu, Dài >= 15 câu.
+    LENGTH_UNLOCK_CHARS = {
+        "short": MIN_CHARS,
+        "medium": 1000,
+        "long": 2000,
+    }
+
+    # Độ dài bản tóm tắt = tỷ lệ % độ dài bản gốc, kẹp trong [floor, ceiling].
+    # ratio/words dùng cho Gemini, ratio/sentences dùng cho TF-IDF fallback.
+    LENGTH_POLICIES = {
+        "short": {"ratio": 12, "min_words": 25, "max_words": 120, "min_sentences": 2, "max_sentences": 5},
+        "medium": {"ratio": 22, "min_words": 40, "max_words": 260, "min_sentences": 3, "max_sentences": 8},
+        "long": {"ratio": 35, "min_words": 60, "max_words": 450, "min_sentences": 5, "max_sentences": 12},
+    }
+
+    @classmethod
+    def target_words(cls, word_count: int, length: str) -> int:
+        """Số từ đích của bản tóm tắt theo mốc length (SPEC 5.1)."""
+        policy = cls.LENGTH_POLICIES.get(length) or cls.LENGTH_POLICIES["medium"]
+        raw = round(word_count * policy["ratio"] / 100)
+        return max(policy["min_words"], min(policy["max_words"], raw))
+
+    @classmethod
+    def target_sentences(cls, sentence_count: int, length: str) -> int:
+        """Số câu đích của bản tóm tắt TF-IDF theo mốc length (SPEC 5.6)."""
+        policy = cls.LENGTH_POLICIES.get(length) or cls.LENGTH_POLICIES["medium"]
+        raw = round(sentence_count * policy["ratio"] / 100)
+        return max(policy["min_sentences"], min(policy["max_sentences"], raw))
 
     # Chống spam theo IP (SPEC 5.5). Quota nghiệp vụ theo ngày nằm ở bảng usage_quota (GĐ2).
     RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", 30))

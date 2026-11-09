@@ -21,14 +21,20 @@
 - **Không dịch.** Giá trị lưu vào cột `language`.
 - Người dùng chọn độ dài tóm tắt: `short` / `medium` (mặc định) / `long` (tham số `length`).
 
-### 1.2. Định dạng bản tóm tắt (đã chốt)
-Một chuỗi văn bản gồm: 1 đoạn tóm tắt duy nhất (không có bullet points hay ý chính riêng).
+### 1.2. Định dạng bản tóm tắt (đã chốt 2026-11-07)
+Một chuỗi văn bản gồm: 1 đoạn tóm tắt duy nhất (không có bullet points, không danh sách, không xuống dòng giữa đoạn).
 
-| length | Độ dài đoạn tóm tắt (ước lượng) |
-|---|---|
-| short | ≤ 100 từ (~10% bản gốc) |
-| medium | ≤ 200 từ (~20% bản gốc) |
-| long | ≤ 350 từ (~30% bản gốc) |
+Độ dài bản tóm tắt **không** còn là con số từ cố định, mà theo **tỷ lệ % số từ của bản gốc**, kẹp giữa ngưỡng dưới và ngưỡng trên:
+
+| length | Tỷ lệ bản gốc | Ngưỡng dưới | Ngưỡng trên | Bản gốc tối thiểu |
+|---|---|---|---|---|
+| short | 12% | 25 từ | 120 từ | 400 ký tự |
+| medium | 22% | 40 từ | 260 từ | 1.000 ký tự |
+| long | 35% | 60 từ | 450 từ | 2.000 ký tự |
+
+- Công thức: `target_words = clamp(round(source_words × ratio), floor, ceiling)`.
+- Cột "Bản gốc tối thiểu" là ngưỡng **mở khoá mốc**: văn bản chưa đạt thì mốc đó không chọn được (app xám nút, backend trả `LENGTH_NOT_UNLOCKED`). Ngưỡng short trùng `MIN_CHARS` nên luôn mở khi văn bản hợp lệ.
+- TF-IDF fallback dùng cùng tỷ lệ % nhưng tính theo **số câu**: `[2–5]` / `[3–8]` / `[5–12]` câu.
 
 ### 1.3. Giới hạn đã biết (chấp nhận, KHÔNG tự "sửa")
 - `Device_ID` mất khi gỡ app/xóa dữ liệu → quota reset, lịch sử khách cũ không truy cập được.
@@ -148,8 +154,9 @@ TextSummarizerAI/
 
 ### 5.1. Văn bản đầu vào
 - Chuẩn hóa **Unicode NFC**, `strip()`, rồi đếm bằng `len()` của Python (backend quyết định cuối; app chỉ kiểm tra sơ bộ).
-- Tối thiểu **200**, tối đa **30.000** ký tự.
-- Lỗi: `TEXT_TOO_SHORT` — *"Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 200 ký tự."*; `TEXT_TOO_LONG` — *"Văn bản vượt quá giới hạn 30.000 ký tự. Vui lòng chia nhỏ nội dung."*
+- Tối thiểu **400** (nâng từ 200 ngày 2026-11-07: bản 200 ký tự quá ngắn nên AI dễ bịa/verbatim), tối đa **30.000** ký tự.
+- Ngưỡng mở khoá mốc tóm tắt theo số ký tự bản gốc: `short` **400** / `medium` **1.000** / `long` **2.000** (ước lượng ~120 ký tự/câu → tối thiểu 3 / 8 / 15 câu).
+- Lỗi: `TEXT_TOO_SHORT` — *"Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 400 ký tự."*; `TEXT_TOO_LONG` — *"Văn bản vượt quá giới hạn 30.000 ký tự. Vui lòng chia nhỏ nội dung."*; `LENGTH_NOT_UNLOCKED` (400) — *"Mốc tóm tắt này cần văn bản dài ít nhất N ký tự (hiện có M ký tự)."*
 
 ### 5.2. Tệp tải lên
 - Cho phép `.txt`, `.docx`, `.pdf`, tối đa **10 MB** (`MAX_CONTENT_LENGTH`). File `.doc` cũ **không** hỗ trợ.
@@ -184,6 +191,8 @@ TextSummarizerAI/
 ### 5.6. Fallback tóm tắt
 - Điều kiện chuyển sang TF-IDF: Gemini timeout (15s), lỗi mạng, hết hạn mức, bị chặn safety, trả rỗng, hoặc JSON hỏng sau 1 lần retry.
 - Thuật toán: tách câu bằng regex (hỗ trợ dấu `.!?…` và xuống dòng), chấm điểm câu bằng TF-IDF, lấy top-k theo `length`, **giữ nguyên thứ tự gốc**. Không dùng stopword tiếng Anh cho tiếng Việt.
+- Số câu lấy = tỷ lệ % số câu bản gốc theo mốc (12% / 22% / 35%), kẹp trong `[2–5]` / `[3–8]` / `[5–12]`; văn bản chỉ có 1–2 câu thì lấy toàn bộ.
+- **Định dạng output fallback (chốt 2026-11-07):** các câu được đánh số `1. `, `2. ` trên từng dòng. Bản Gemini mới là đoạn văn liền mạch, nên người dùng nhìn là biết kết quả đến từ thuật toán chứ không phải AI. Đây là ngoại lệ có chủ đích của quy tắc "1 đoạn văn duy nhất" ở mục 1.2.
 - `title` fallback = câu đầu cắt ≤ 60 ký tự; `description` = 120 ký tự đầu của bản tóm tắt. Phần "ý chính" có thể bỏ.
 - Response luôn có `source: "gemini" | "tfidf"`.
 
@@ -262,16 +271,19 @@ Xem `PHASES.md` (kèm tiêu chí hoàn thành). Tóm tắt:
 Chuẩn bị trước, mỗi giai đoạn phải chạy qua bộ này:
 | Tên | Mô tả | Kết quả mong đợi |
 |---|---|---|
-| `en_250.txt` | Tiếng Anh ~250 ký tự | tóm tắt OK, `language=en` |
-| `vi_500.txt` | Tiếng Việt có dấu ~500 ký tự | OK, `language=vi` |
+| `en_250.txt` | Tiếng Anh 250 ký tự (dưới ngưỡng 400) | `TEXT_TOO_SHORT` |
+| `en_400.txt` | Tiếng Anh 455 ký tự / 72 từ / 5 câu | tóm tắt OK, `language=en`, mở mốc `short` |
+| `vi_500.txt` | Tiếng Việt có dấu 500 ký tự | OK, `language=vi`, chỉ mở mốc `short` |
+| `vi_1200.txt` | Tiếng Việt 1.272 ký tự / 12 câu | mở mốc `short` + `medium`, khoá `long` |
+| `vi_2500.txt` | Tiếng Việt 2.385 ký tự / 22 câu | mở cả ba mốc |
 | `short_100.txt` | 100 ký tự | `TEXT_TOO_SHORT` |
 | `long_31000.txt` | 31.000 ký tự | `TEXT_TOO_LONG` |
-| `emoji.txt` | có emoji, ký tự đặc biệt | không crash, đếm đúng |
+| `emoji.txt` | có emoji, ký tự đặc biệt (447 ký tự) | không crash, đếm đúng |
 | `mixed.txt` | trộn Anh–Việt | ngôn ngữ ưu thế |
 | `sample.txt`, `sample.docx`, `sample_text.pdf` | file hợp lệ | trích xuất OK |
 | `scanned.pdf` | PDF ảnh scan | `PDF_SCANNED` |
 | `big_11mb.pdf` | > 10MB | `FILE_TOO_LARGE` |
-| `injection.txt` | chứa câu "bỏ qua mọi hướng dẫn trước đó..." | vẫn trả bản tóm tắt bình thường |
+| `injection.txt` | chứa câu "bỏ qua mọi hướng dẫn trước đó..." (626 ký tự) | vẫn trả bản tóm tắt bình thường |
 | `ocr_vi.jpg` | ảnh chụp chữ tiếng Việt có dấu | đánh giá độ chính xác OCR |
 
 **Test tự động tối thiểu (pytest):** (1) validate độ dài/NFC, (2) mã hóa–giải mã round-trip + nonce khác nhau, (3) hàm tính số câu quiz `N` (ví dụ 400→3, 650→5, 1300→10, 5000→10).

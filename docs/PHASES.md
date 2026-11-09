@@ -17,7 +17,7 @@
 
 ### 1A. Backend chạy bằng curl
 1. Khung Flask: `app.py`, `config.py`, `utils/responses.py`, `utils/errors.py`, error handler toàn cục, `GET /health`, `GET /api/v1/config`.
-2. `utils/text_utils.py` + `validators.py`: NFC, strip, kiểm tra 200–30.000, kiểm tra header `X-Device-ID`/`X-App-Version`.
+2. `utils/text_utils.py` + `validators.py`: NFC, strip, kiểm tra 400–30.000, khoá mốc theo ngưỡng ký tự (SPEC 5.1), kiểm tra header `X-Device-ID`/`X-App-Version`.
 3. `services/tfidf_service.py` (fallback) — viết **trước** Gemini để có đường chạy ngay.
 4. `services/gemini_service.py` theo `PROMPTS.md` (JSON schema, timeout 15s, retry 1 lần, fallback).
 5. `POST /api/v1/summaries` (chưa lưu DB, `id: null`), `Flask-Limiter` theo IP.
@@ -27,17 +27,18 @@
 ### 1B. Flutter
 1. Khung app, theme (Navy `#143C64`, Roboto), `flutter_launcher_icons`.
 2. `core/api_client.dart` (Dio): gắn `X-Device-ID` (uuid lưu secure storage), `X-App-Version`; timeout ≥ 60s; thông báo "Đang đánh thức máy chủ..." sau 8s; xử lý lỗi → SnackBar.
-3. `AndroidManifest.xml`: **thêm quyền INTERNET**, quyền camera nếu cần; `minSdkVersion` theo yêu cầu của ML Kit (≥ 21, kiểm tra README package).
-4. HomeView 1 tab: Dán chữ / Quét ảnh (OCR, có ô sửa) / Chọn file (extract → ô sửa). Chọn độ dài Ngắn/Vừa/Dài. Hiển thị kết quả + Copy/Chia sẻ.
+3. `AndroidManifest.xml`: **thêm quyền INTERNET** và quyền camera; `minSdkVersion` theo yêu cầu image_picker. OCR chạy ở backend (Gemini Vision) nên máy không cần ML Kit.
+4. HomeView 1 tab: Dán chữ / Quét ảnh (OCR qua `POST /api/v1/ocr`, có ô sửa) / Chọn file (extract → ô sửa). Chọn độ dài Ngắn/Vừa/Dài, mốc chưa mở khoá thì xám và hiện "Cần thêm ~N ký tự". Hiển thị kết quả + Copy/Chia sẻ.
 5. Nút gửi bị vô hiệu hóa khi đang xử lý.
 
 ### 1C. Nối và kiểm thử
 Chạy bộ `testdata/`; **kiểm thử OCR tiếng Việt** qua Gemini Vision API (`ocr_vi.jpg`).
 
 ### ✅ DoD Giai đoạn 1
-- [ ] curl: `en_250.txt` → 201, `language=en`, `source=gemini`.
-- [ ] curl: `vi_500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (1 đoạn văn duy nhất).
-- [ ] curl: `short_100.txt` → 400 `TEXT_TOO_SHORT`; `long_31000.txt` → 400 `TEXT_TOO_LONG`.
+- [ ] curl: `en_400.txt` → 201, `language=en`, `source=gemini`.
+- [ ] curl: `vi_2500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (1 đoạn văn duy nhất).
+- [ ] curl: `short_100.txt` + `en_250.txt` → 400 `TEXT_TOO_SHORT`; `long_31000.txt` → 400 `TEXT_TOO_LONG`.
+- [ ] curl: `en_400.txt` với `length=medium` hoặc `long` → 400 `LENGTH_NOT_UNLOCKED`; `vi_1200.txt` + `length=long` → 400 `LENGTH_NOT_UNLOCKED`.
 - [ ] Đặt sai `GEMINI_API_KEY` → vẫn 201 với `source=tfidf`.
 - [ ] `injection.txt` → vẫn ra bản tóm tắt bình thường.
 - [ ] Upload: `scanned.pdf` → `PDF_SCANNED`; `big_11mb.pdf` → `FILE_TOO_LARGE`; DOCX/TXT/PDF thường → trích xuất đúng.

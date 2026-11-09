@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import pytest
 
 try:
@@ -17,6 +18,11 @@ def read_testdata(filename: str) -> str:
     return file_path.read_text(encoding="utf-8")
 
 
+def numbered_sentences(summary: str) -> list[str]:
+    """Bản tóm tắt TF-IDF là danh sách câu đánh số -> tách lại thành câu gốc không có số."""
+    return [re.sub(r"^\d+\.\s*", "", line).strip() for line in summary.split("\n") if line.strip()]
+
+
 def test_tfidf_vietnamese_summary():
     """Kiểm tra tóm tắt TF-IDF với văn bản tiếng Việt mẫu vi_500.txt."""
     vi_text = read_testdata("vi_500.txt")
@@ -31,8 +37,8 @@ def test_tfidf_vietnamese_summary():
 
 
 def test_tfidf_english_summary():
-    """Kiểm tra tóm tắt TF-IDF với văn bản tiếng Anh mẫu en_250.txt."""
-    en_text = read_testdata("en_250.txt")
+    """Kiểm tra tóm tắt TF-IDF với văn bản tiếng Anh mẫu en_400.txt."""
+    en_text = read_testdata("en_400.txt")
     result = TfidfService.summarize(en_text, length="short")
 
     assert result["source"] == "tfidf"
@@ -56,7 +62,7 @@ def test_tfidf_preserves_original_sentence_order():
     all_sentences = split_sentences(text)
     result = TfidfService.summarize(text, length="medium")
 
-    summary_sentences = split_sentences(result["summary"])
+    summary_sentences = numbered_sentences(result["summary"])
     assert len(summary_sentences) >= 2
 
     # Lấy vị trí xuất hiện của từng câu tóm tắt trong danh sách câu gốc
@@ -83,9 +89,9 @@ def test_tfidf_lengths_scaling():
     res_medium = TfidfService.summarize(long_text, length="medium")
     res_long = TfidfService.summarize(long_text, length="long")
 
-    count_short = len(split_sentences(res_short["summary"]))
-    count_medium = len(split_sentences(res_medium["summary"]))
-    count_long = len(split_sentences(res_long["summary"]))
+    count_short = len(numbered_sentences(res_short["summary"]))
+    count_medium = len(numbered_sentences(res_medium["summary"]))
+    count_long = len(numbered_sentences(res_long["summary"]))
 
     assert count_short <= count_medium <= count_long
     assert count_short >= 2

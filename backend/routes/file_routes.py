@@ -23,7 +23,7 @@ file_bp = Blueprint("file", __name__)
 def extract_file():
     """Trích văn bản từ file để app hiển thị cho xem/sửa trước khi gọi /summaries.
 
-    Không chặn tối thiểu 200 ký tự ở bước này (API.md không liệt kê TEXT_TOO_SHORT),
+    Không chặn tối thiểu 400 ký tự ở bước này (API.md không liệt kê TEXT_TOO_SHORT),
     chỉ chặn tối đa 30.000 vì người dùng còn sửa nội dung sau khi trích.
     """
     upload = request.files.get("file")

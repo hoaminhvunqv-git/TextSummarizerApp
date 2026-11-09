@@ -31,8 +31,9 @@ def parse_version(version_str: str) -> Tuple[int, ...]:
 def validate_summary_input(text: Optional[str], length: Optional[str] = "medium") -> Tuple[str, str]:
     """Kiểm tra và chuẩn hóa văn bản đầu vào và tham số độ dài theo SPEC 5.1 & API.md.
 
-    - Tối thiểu 200, tối đa 30.000 ký tự (sau khi NFC + strip).
+    - Tối thiểu 400, tối đa 30.000 ký tự (sau khi NFC + strip).
     - length nhận: short | medium | long (mặc định medium).
+    - Mốc medium/long còn bị khoá cho tới khi bản gốc đạt ngưỡng ký tự tương ứng.
     """
     if text is None:
         raise AppError(ErrorCode.TEXT_TOO_SHORT)
@@ -52,6 +53,16 @@ def validate_summary_input(text: Optional[str], length: Optional[str] = "medium"
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
             message="Tham số độ dài không hợp lệ (chỉ chấp nhận: short, medium, long).",
+        )
+
+    required_chars = Config.LENGTH_UNLOCK_CHARS[selected_length]
+    if char_count < required_chars:
+        raise AppError(
+            ErrorCode.LENGTH_NOT_UNLOCKED,
+            message=(
+                f"Mốc tóm tắt này cần văn bản dài ít nhất {required_chars} ký tự "
+                f"(hiện có {char_count} ký tự)."
+            ),
         )
 
     return normalized_text, selected_length

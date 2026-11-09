@@ -32,9 +32,9 @@ def fake_gemini_result(text: str, length: str = "medium"):
     return {
         "title": "Tiêu đề kiểm thử" if language == "vi" else "Test title",
         "description": "Mô tả kiểm thử." if language == "vi" else "Test description.",
-        "summary": "Đoạn tóm tắt.\n\n- Ý một\n- Ý hai\n- Ý ba"
+        "summary": "Đoạn tóm tắt liền mạch, không gạch đầu dòng."
         if language == "vi"
-        else "Summary paragraph.\n\n- Point one\n- Point two\n- Point three",
+        else "A single flowing summary paragraph with no bullet points.",
         "language": language,
         "source": "gemini",
         "original_length": len(text),
@@ -70,7 +70,7 @@ def post_summary(client, text, length=None, headers=None):
 
 
 def test_summary_vi_success(client, mock_gemini):
-    text = read_testdata("vi_500.txt")
+    text = read_testdata("vi_1200.txt")
     resp = post_summary(client, text, "medium")
 
     assert resp.status_code == 201
@@ -84,12 +84,14 @@ def test_summary_vi_success(client, mock_gemini):
     assert data["id"] is None
     assert data["original_length"] == len(normalize_text(text))
     assert data["created_at"].endswith("+07:00")
-    assert "\n\n- " in data["summary"]
+    # SPEC 1.2 (Phương án A): bản tóm tắt chỉ là 1 đoạn văn, không gạch đầu dòng
+    assert "\n" not in data["summary"]
+    assert "- " not in data["summary"]
     assert data["usage"] == {"summary_remaining": None, "quiz_remaining": None}
 
 
 def test_summary_en_success(client, mock_gemini):
-    resp = post_summary(client, read_testdata("en_250.txt"), "short")
+    resp = post_summary(client, read_testdata("en_400.txt"), "short")
 
     assert resp.status_code == 201
     assert resp.get_json()["data"]["language"] == "en"
@@ -97,13 +99,23 @@ def test_summary_en_success(client, mock_gemini):
 
 @pytest.mark.parametrize("length", ["short", "medium", "long"])
 def test_length_forwarded_to_service(client, mock_gemini, length):
-    post_summary(client, read_testdata("vi_500.txt"), length)
+    post_summary(client, read_testdata("vi_2500.txt"), length)
 
     assert mock_gemini.call_args.args[1] == length
 
 
+@pytest.mark.parametrize("length", ["medium", "long"])
+def test_locked_length_returns_error(client, mock_gemini, length):
+    """Bản gốc 455 ký tự chưa mở mốc Vừa/Dài → 400 LENGTH_NOT_UNLOCKED, không gọi AI."""
+    resp = post_summary(client, read_testdata("en_400.txt"), length)
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error_code"] == "LENGTH_NOT_UNLOCKED"
+    mock_gemini.assert_not_called()
+
+
 def test_length_defaults_to_medium(client, mock_gemini):
-    resp = post_summary(client, read_testdata("vi_500.txt"))
+    resp = post_summary(client, read_testdata("vi_1200.txt"))
 
     assert resp.status_code == 201
     assert mock_gemini.call_args.args[1] == "medium"
@@ -185,7 +197,7 @@ def test_old_app_version(client, mock_gemini):
 def test_fallback_to_tfidf_when_gemini_unavailable(client):
     """Không có client Gemini → route vẫn trả 201 với source=tfidf (SPEC 5.6)."""
     with patch.object(GeminiService, "get_client", return_value=None):
-        resp = post_summary(client, read_testdata("vi_500.txt"))
+        resp = post_summary(client, read_testdata("vi_1200.txt"))
 
     assert resp.status_code == 201
     data = resp.get_json()["data"]
@@ -195,7 +207,7 @@ def test_fallback_to_tfidf_when_gemini_unavailable(client):
 
 
 def test_injection_text_still_summarized(client, mock_gemini):
-    resp = post_summary(client, read_testdata("injection.txt"))
+    resp = post_summary(client, read_testdata("injection.txt"), "short")
 
     assert resp.status_code == 201
     assert len(resp.get_json()["data"]["summary"]) > 0
@@ -203,7 +215,7 @@ def test_injection_text_still_summarized(client, mock_gemini):
 
 def test_emoji_text_does_not_crash(client, mock_gemini):
     text = read_testdata("emoji.txt")
-    resp = post_summary(client, text)
+    resp = post_summary(client, text, "short")
 
     assert resp.status_code == 201
     assert resp.get_json()["data"]["original_length"] == len(normalize_text(text))

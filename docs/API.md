@@ -16,7 +16,7 @@ Base URL: `https://<host>/api/v1`  ·  Content-Type: `application/json` (trừ u
 ```
 **Lỗi:**
 ```json
-{ "success": false, "error_code": "TEXT_TOO_SHORT", "message": "Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 200 ký tự." }
+{ "success": false, "error_code": "TEXT_TOO_SHORT", "message": "Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 400 ký tự." }
 ```
 Mọi exception không lường trước → `500 INTERNAL_ERROR` (không lộ stack trace).
 
@@ -51,9 +51,10 @@ Mọi exception không lường trước → `500 INTERNAL_ERROR` (không lộ s
 ### POST `/summaries`
 Request:
 ```json
-{ "text": "<200–30000 ký tự>", "length": "medium" }
+{ "text": "<400–30000 ký tự>", "length": "medium" }
 ```
 `length`: `short | medium | long`, mặc định `medium`.
+Độ dài bản tóm tắt = tỷ lệ số từ bản gốc (12% / 22% / 35%, kẹp trong 25–120 / 40–260 / 60–450 từ). Mốc `medium` cần bản gốc ≥ 1.000 ký tự, `long` cần ≥ 2.000 ký tự; chưa đạt thì trả `LENGTH_NOT_UNLOCKED`.
 
 Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
 ```json
@@ -63,7 +64,7 @@ Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
     "id": 12,
     "title": "Tác động của AI tới giáo dục",
     "description": "Bài viết phân tích lợi ích và rủi ro của AI trong lớp học.",
-    "summary": "AI đang thay đổi cách dạy và học...\n\n- Cá nhân hóa lộ trình học\n- Rủi ro lệ thuộc công cụ\n- Cần quy định minh bạch",
+    "summary": "AI đang thay đổi cách dạy và học bằng cách cá nhân hoá lộ trình, nhưng cũng tạo rủi ro người học lệ thuộc công cụ và cần quy minh bạch.",
     "language": "vi",
     "source": "gemini",
     "original_length": 1840,
@@ -178,7 +179,8 @@ Lỗi: `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`.
 ```json
 { "success": true, "message": "Xử lý thành công",
   "data": { "min_app_version": "1.0.0",
-            "limits": { "min_chars": 200, "max_chars": 30000, "max_file_mb": 10, "daily_summary": 20, "daily_quiz": 20 } } }
+            "limits": { "min_chars": 400, "max_chars": 30000, "max_file_mb": 10, "daily_summary": 20, "daily_quiz": 20 },
+            "length_unlock_chars": { "short": 400, "medium": 1000, "long": 2000 } } }
 ```
 
 ### GET `/health`
@@ -188,7 +190,8 @@ Lỗi: `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`.
 
 | error_code | HTTP | Message (tiếng Việt, hiển thị cho người dùng) |
 |---|---|---|
-| `TEXT_TOO_SHORT` | 400 | Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 200 ký tự. |
+| `TEXT_TOO_SHORT` | 400 | Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 400 ký tự. |
+| `LENGTH_NOT_UNLOCKED` | 400 | Mốc tóm tắt bạn chọn cần văn bản dài hơn. Hãy nhập thêm nội dung hoặc chọn mốc Ngắn. |
 | `TEXT_TOO_LONG` | 400 | Văn bản vượt quá giới hạn 30.000 ký tự. Vui lòng chia nhỏ nội dung. |
 | `QUIZ_TEXT_TOO_SHORT` | 400 | Văn bản quá ngắn để tạo quiz (cần ít nhất 400 ký tự). |
 | `FILE_TOO_LARGE` | 413 | Dung lượng file vượt quá 10MB. |

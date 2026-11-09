@@ -3,12 +3,14 @@ from typing import Dict, Any, List
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 try:
+    from backend.config import Config
     from backend.utils.text_utils import (
         normalize_text,
         split_sentences,
         detect_language,
     )
 except ImportError:
+    from config import Config
     from utils.text_utils import (
         normalize_text,
         split_sentences,
@@ -24,26 +26,13 @@ class TfidfService:
 
     @staticmethod
     def _calculate_target_sentences(total: int, length: str) -> int:
-        """Tính số câu cần trích xuất dựa vào tổng số câu và tham số length.
+        """Số câu trích xuất = tỷ lệ % số câu bản gốc, kẹp trong ngưỡng của mốc length.
 
-        - short:  ~15% số câu (tối thiểu 2, tối đa 3)
-        - medium: ~25% số câu (tối thiểu 3, tối đa 5)
-        - long:   ~40% số câu (tối thiểu 4, tối đa 8)
+        Ngắn 12% [2,5] | Vừa 22% [3,8] | Dài 35% [5,12] (SPEC 5.6, Config.LENGTH_POLICIES).
         """
         if total <= 2:
             return total
-
-        length_lower = (length or "medium").strip().lower()
-
-        if length_lower == "short":
-            k = round(total * 0.15)
-            return max(2, min(3, k))
-        elif length_lower == "long":
-            k = round(total * 0.40)
-            return max(4, min(8, k))
-        else:  # medium mặc định
-            k = round(total * 0.25)
-            return max(3, min(5, k))
+        return Config.target_sentences(total, (length or "medium").strip().lower())
 
     @classmethod
     def summarize(cls, text: str, length: str = "medium") -> Dict[str, Any]:

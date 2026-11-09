@@ -3,6 +3,7 @@ from typing import Optional
 
 class ErrorCode:
     TEXT_TOO_SHORT = "TEXT_TOO_SHORT"
+    LENGTH_NOT_UNLOCKED = "LENGTH_NOT_UNLOCKED"
     TEXT_TOO_LONG = "TEXT_TOO_LONG"
     QUIZ_TEXT_TOO_SHORT = "QUIZ_TEXT_TOO_SHORT"
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
@@ -30,7 +31,8 @@ class ErrorCode:
 
 # Bảng định nghĩa HTTP status code và thông điệp chuẩn theo docs/API.md
 ERROR_DEFINITIONS = {
-    ErrorCode.TEXT_TOO_SHORT: (400, "Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 200 ký tự."),
+    ErrorCode.TEXT_TOO_SHORT: (400, "Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 400 ký tự."),
+    ErrorCode.LENGTH_NOT_UNLOCKED: (400, "Mốc tóm tắt bạn chọn cần văn bản dài hơn. Hãy nhập thêm nội dung hoặc chọn mốc Ngắn."),
     ErrorCode.TEXT_TOO_LONG: (400, "Văn bản vượt quá giới hạn 30.000 ký tự. Vui lòng chia nhỏ nội dung."),
     ErrorCode.QUIZ_TEXT_TOO_SHORT: (400, "Văn bản quá ngắn để tạo quiz (cần ít nhất 400 ký tự)."),
     ErrorCode.FILE_TOO_LARGE: (413, "Dung lượng file vượt quá 10MB."),

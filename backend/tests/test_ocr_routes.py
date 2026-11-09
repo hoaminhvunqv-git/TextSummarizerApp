@@ -220,39 +220,36 @@ class TestOcrEndpoint:
         assert result["error_code"] == "UPDATE_REQUIRED"
 
     def test_ocr_rate_limit(self, client):
-        """Vượt 20 lượt/ngày → 429 RATE_LIMITED."""
-        # Test rate limit bằng cách gửi 21 requests liên tiếp
+        """Vượt 20 lượt OCR/ngày/IP → 429 RATE_LIMITED (không gọi Gemini thật)."""
+        from backend.extensions import limiter
+
+        limiter.reset()
         image_data = b"\xff\xd8\xff\xe0" + b"\x00" * 1000
-        
-        # Gửi 20 requests đầu (trong giới hạn)
-        for i in range(20):
-            data = {"image": (io.BytesIO(image_data), f"test{i}.jpg")}
-            response = client.post(
-                "/api/v1/ocr",
-                data=data,
-                content_type="multipart/form-data",
-                headers={
-                    "X-Device-ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-                    "X-App-Version": "1.0.0",
-                },
-            )
-            # Các request đầu có thể thành công hoặc bị mock từ service
-            # Quan trọng là không bị 429
-        
-        # Request thứ 21 sẽ bị rate limit
-        data = {"image": (io.BytesIO(image_data), "test21.jpg")}
-        response = client.post(
-            "/api/v1/ocr",
-            data=data,
-            content_type="multipart/form-data",
-            headers={
-                "X-Device-ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-                "X-App-Version": "1.0.0",
-            },
-        )
-        
-        # Rate limit có thể không hoạt động trong test environment (memory storage reset)
-        # Nên chỉ kiểm tra structure của response nếu có 429
-        if response.status_code == 429:
-            result = response.get_json()
-            assert result["error_code"] == "RATE_LIMITED"
+        headers = {
+            "X-Device-ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "X-App-Version": "1.0.0",
+        }
+
+        with patch(
+            "backend.routes.ocr_routes.OcrService.extract_text",
+            return_value={"text": "ok", "char_count": 2},
+        ):
+            codes = []
+            overflow = None
+            for _ in range(21):
+                response = client.post(
+                    "/api/v1/ocr",
+                    data={"image": (io.BytesIO(image_data), "test.jpg")},
+                    content_type="multipart/form-data",
+                    headers=headers,
+                )
+                codes.append(response.status_code)
+                if response.status_code == 429:
+                    overflow = response
+
+        try:
+            assert codes[:20] == [200] * 20
+            assert overflow is not None, "Lượt thứ 21 phải bị chặn rate limit"
+            assert overflow.get_json()["error_code"] == "RATE_LIMITED"
+        finally:
+            limiter.reset()

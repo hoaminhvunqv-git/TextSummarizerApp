@@ -30,10 +30,13 @@ Field requirements:
 - "language": "vi" or "en".
 - "title": a concise title, at most 12 words.
 - "description": one sentence, at most 25 words.
-- "summary": a single paragraph summarizing the document. No bullet points, no lists.
-  Paragraph length limit: {WORD_LIMIT} words.
+- "summary": one flowing paragraph, in plain prose. No bullet points, no numbered items, no headings,
+  no lists of keywords, and no line breaks inside the paragraph. Reproduce the source text's line
+  breaks only where they are part of a quoted passage; otherwise write continuous sentences.
+  Length: aim for about {WORD_LIMIT} words and never exceed {WORD_LIMIT} words.
 ```
-`{WORD_LIMIT}`: short=100, medium=200, long=350.
+`{WORD_LIMIT}` tính động từ bản gốc (không còn 100/200/350 cố định):
+`target_words = clamp(round(source_words × ratio), floor, ceiling)` với ratio/floor/ceiling = 12%/25/120 (short), 22%/40/260 (medium), 35%/60/450 (long) — xem `Config.LENGTH_POLICIES` và SPEC 1.2.
 
 **User message**
 ```

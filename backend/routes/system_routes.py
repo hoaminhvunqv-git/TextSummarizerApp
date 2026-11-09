@@ -31,5 +31,6 @@ def get_config():
           "daily_summary": Config.DAILY_SUMMARY_LIMIT,
           "daily_quiz": Config.DAILY_QUIZ_LIMIT,
         },
+        "length_unlock_chars": Config.LENGTH_UNLOCK_CHARS,
     }
     return success_response(data=data)

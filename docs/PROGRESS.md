@@ -9,7 +9,7 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
 - Đã thêm 4 font Roboto vào mobile/fonts, thêm app_icon.png vào mobile/assets/images/
 - Đã thêm GEMINI_API_KEY, GEMINI_MODEL, DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY vào trong backend/.env
-- Đã cài Flutter, Python 3.15.2, Android SDK, Đã có điện thoại Android.
+- Đã cài Flutter, Python 3.13.17 (venv backend), Android SDK, Đã có điện thoại Android.
 - Bước 1A.1: Khởi tạo khung Flask (`app.py`, `config.py`, `utils/responses.py`, `utils/errors.py`, `routes/system_routes.py`, `tests/test_system.py`, `pytest.ini`). Các endpoint `/health` và `/api/v1/config` đã hoạt động và pass kiểm thử.
 - Bước 1B (Khung Flutter):
   - Thiết lập `pubspec.yaml` với `dio`, `provider`, `flutter_secure_storage`, `uuid`, `intl`, `flutter_spinkit` và 4 font `Roboto`.
@@ -73,8 +73,9 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
   - `flutter analyze` đạt 100% không lỗi.
 
 ## Đang dở / bước tiếp theo
-- 1C.3: Triển khai Gemini Vision OCR (thay thế ML Kit on-device) và kiểm thử với `ocr_vi.jpg`.
-- 1C.4: Kiểm thử end-to-end trên máy Android thật (build debug APK, test 3 luồng nhập liệu, test các ca lỗi).
+- 1C.3: Kiểm thử Gemini Vision OCR với `ocr_vi.jpg` (code đã xong, đang chặn bởi lỗi môi trường `pydantic-core` và 404 ở trên).
+- 1C.4: Kiểm thử end-to-end trên máy Android thật (3 luồng nhập liệu, mốc Ngắn/Vừa/Dài có khoá, SnackBar kết quả).
+- 1C.5: Chạy lại toàn bộ DoD GĐ1 bằng curl sau khi môi trường gọi được Gemini (`en_400.txt`, `vi_2500.txt`, `LENGTH_NOT_UNLOCKED`).
 
 ## Thay đổi thiết kế (2026-11-07)
 - **OCR: ML Kit on-device → Gemini Vision API**
@@ -87,6 +88,21 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
   - Lý do: User yêu cầu (Plan A) - chỉ trả về 1 đoạn văn tóm tắt, không có 3-5 ý chính riêng.
   - Đã cập nhật prompt Gemini trong PROMPTS.md mục 1.
   - Ảnh hưởng: SPEC.md mục 1.2, PROMPTS.md mục 1, PHASES.md DoD GĐ1.
+
+## Thay đổi thiết kế (2026-11-09)
+- **Đầu vào tối thiểu: 200 → 400 ký tự**
+  - Lý do: bản 200–250 ký tự (~2–3 câu) quá ngắn, Gemini thường trả lại gần như nguyên văn hoặc bịa thêm.
+  - Ảnh hưởng: `Config.MIN_CHARS`, message `TEXT_TOO_SHORT`, SPEC 5.1, API.md, PHASES 1A.2, `AppConstants.minChars` (Flutter), hint trong HomeView.
+- **Độ dài bản tóm tắt: số từ cố định → tỷ lệ % bản gốc**
+  - Bỏ `WORD_LIMITS = {short:100, medium:200, long:350}` vì mốc cố định khiến bản tóm tắt văn bản dài bị cắt gọt tuỳ tiện, văn bản ngắn thì thừa.
+  - Công thức mới: `target_words = clamp(round(source_words × ratio), floor, ceiling)`; short 12% [25,120], medium 22% [40,260], long 35% [60,450].
+  - TF-IDF fallback dùng cùng ratio nhưng tính theo số câu: [2,5] / [3,8] / [5,12] (trước đây 15/25/40%).
+  - Hằng số đặt tại `Config.LENGTH_POLICIES`; PROMPTS.md mục 1 mô tả lại `{WORD_LIMIT}` động.
+- **Ngưỡng mở khoá mốc Ngắn/Vừa/Dài theo ký tự bản gốc: 400 / 1.000 / 2.000**
+  - Cơ sở: ~120 ký tự/câu → tương ứng khoảng 3 / 8 / 15 câu, đủ ý để tóm tắt vừa và dài có nghĩa.
+  - Backend: `Config.LENGTH_UNLOCK_CHARS` + error code mới `LENGTH_NOT_UNLOCKED` (400). App: chip Chưa mở khoá bị xám, hiện "Cần thêm ~N ký tự", tự hạ về mốc Ngắn khi người dùng xoá văn bản.
+  - `GET /api/v1/config` trả thêm `length_unlock_chars` để app không phải hard-code dài hạn.
+- **testdata**: thêm `en_400.txt` (455 ký tự) thay `en_250.txt` trong DoD, thêm `vi_1200.txt` (1.272) và `vi_2500.txt` (2.385) để kiểm thử mốc Vừa/Dài. `en_250.txt` giữ lại làm fixture dương tính cho `TEXT_TOO_SHORT`. `injection.txt` (279→626) và `emoji.txt` (232→447) được viết dài ra để vẫn qua được ngưỡng 400.
 
 ## Quyết định đã chốt khi code
 - Cấu hình `sys.path` và `pytest.ini` (`pythonpath = . ..`) để code backend có thể chạy mượt mà từ cả thư mục `backend/` lẫn thư mục gốc repo.
@@ -110,6 +126,11 @@ Giai đoạn 1A — Bước 1A.6 đã xong. Chuẩn bị bước 1C (nối Flutt
 - `filename` trả về giữ nguyên dấu tiếng Việt: chỉ lấy phần tên cuối (`Path(...).name`) và cắt 255 ký tự, không dùng `secure_filename` vì không ghi file xuống đĩa.
 
 ## Lỗi đã biết / việc cần nhớ
+- **[ĐÃ XỬ LÝ 2026-11-09] `pydantic-core` bị "An Application Control policy has blocked this file"**: Smart App Control của Windows (registry `VerifiedAndReputablePolicyState = 1`) chặn `_pydantic_core.cp315-win_amd64.pyd` do wheel cho Python 3.15 còn quá mới, chưa có reputation. Hậu quả: `google.genai` không import được, `gemini_service.types = None`, **mọi** request rơi về TF-IDF (`source=tfidf`) — đây là nguyên nhân thật của các bản tóm tắt "sai tùm lum" ngày 08-09/11, không phải lỗi code.
+  - Cách thử không đụng hệ thống đều thất bại: `Unblock-File` toàn bộ thư mục `pydantic_core`, và `pip install --force-reinstall --no-cache-dir pydantic-core`.
+  - Cách đã áp dụng: cài Python 3.13.17 qua `winget install -e --id Python.Python.3.13` rồi tạo lại `backend/.venv` từ 3.13 → `from google import genai` chạy được, `pytest` **70 passed, 0 skipped**. Môi trường 3.15 cũ giữ ở `backend/.venv315_bak` (đã thêm `.venv*/` vào `.gitignore`), xoá được khi chắc không cần quay lại.
+  - Lưu ý khi test: `numpy/scipy/sklearn` vẫn nạp bình thường nên chỉ nhìn vào `import sklearn` mà kết luận "môi trường ổn" là sai; phải check đúng `google.genai`.
+- **[ĐÃ XỬ LÝ 2026-11-09] `POST /api/v1/ocr` trả 404 khi gọi qua HTTP thật** (curl, requests) dù `app.url_map` có rule và `app.test_client()` gọi được. Nguyên nhân: tiến trình Flask cũ khởi động từ môi trường Python 3.15 (nơi `google.genai` không nạp được) vẫn giữ cổng 5000, request đi vào code cũ không có blueprint OCR. Sau khi thay venv bằng Python 3.13 và khởi động lại server: `POST /api/v1/ocr` với ảnh `.gif` → **400 `FILE_UNSUPPORTED`** (đã vào tới validate, chưa gọi Gemini, không tốn quota). Đã dọn xong artifact debug (`/test-ocr`, `print` trong `create_app`, log trong `ocr_routes.py`); `@require_device_and_version` và `@limiter.limit("20 per day")` đã trở lại.
 - Gemini thỉnh thoảng trả 503/504 tạm thời: trong lúc test, `vi_500` bị 503 hai lần liên tiếp nên fallback tfidf, gọi lại ngay sau đó thì 200 `source=gemini`. Fallback hoạt động đúng SPEC 5.6, nhưng cần chạy lại vài lần khi đối chiếu DoD `source=gemini`, đừng kết luận sai là lỗi code.
 - Model Gemini 3.x mặc định bật "thinking" nên dễ chậm; chưa thêm `thinking_config` vì `gemini-3.5-flash` đã đủ nhanh (~8–12s cho văn bản 250–500 ký tự). Nếu sau này gặp văn bản 30.000 ký tự vượt timeout 15s thì cân nhắc lại.
 

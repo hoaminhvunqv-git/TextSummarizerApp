@@ -21,13 +21,6 @@ except ImportError:
 
 logger = logging.getLogger("text_summarizer.gemini")
 
-# Giới hạn số từ cho đoạn văn tóm tắt theo PROMPTS.md
-WORD_LIMITS = {
-    "short": 100,
-    "medium": 200,
-    "long": 350,
-}
-
 SYSTEM_INSTRUCTION_TEMPLATE = """You are a precise summarization engine for English and Vietnamese texts.
 
 Rules:
@@ -42,8 +35,10 @@ Field requirements:
 - "language": "vi" or "en".
 - "title": a concise title, at most 12 words.
 - "description": one sentence, at most 25 words.
-- "summary": a single paragraph summarizing the document. No bullet points, no lists.
-  Paragraph length limit: {WORD_LIMIT} words."""
+- "summary": one flowing paragraph, in plain prose. No bullet points, no numbered items, no headings,
+  no lists of keywords, and no line breaks inside the paragraph. Reproduce the source text's line
+  breaks only where they are part of a quoted passage; otherwise write continuous sentences.
+  Length: aim for about {WORD_LIMIT} words and never exceed {WORD_LIMIT} words."""
 
 SUMMARY_SCHEMA = {
     "type": "OBJECT",
@@ -87,7 +82,7 @@ class GeminiService:
         if client is None:
             raise ValueError("GEMINI_API_KEY chưa được cấu hình hoặc SDK chưa sẵn sàng.")
 
-        word_limit = WORD_LIMITS.get(length, 200)
+        word_limit = Config.target_words(len(text.split()), length)
         system_instruction = SYSTEM_INSTRUCTION_TEMPLATE.format(WORD_LIMIT=word_limit)
 
         user_content = f"Summarize the following document.\n\n<document>\n{text}\n</document>"

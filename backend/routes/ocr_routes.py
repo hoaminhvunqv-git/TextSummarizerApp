@@ -1,16 +1,17 @@
 from flask import Blueprint, request
-from werkzeug.utils import secure_filename
 
 try:
     from backend.utils.errors import AppError, ErrorCode
     from backend.utils.responses import success_response
     from backend.utils.validators import require_device_and_version
     from backend.services.ocr_service import OcrService
+    from backend.extensions import limiter
 except ImportError:
     from utils.errors import AppError, ErrorCode
     from utils.responses import success_response
     from utils.validators import require_device_and_version
     from services.ocr_service import OcrService
+    from extensions import limiter
 
 ocr_bp = Blueprint("ocr", __name__)
 
@@ -19,6 +20,8 @@ MAX_IMAGE_SIZE = 4 * 1024 * 1024  # 4MB
 
 
 @ocr_bp.route("/api/v1/ocr", methods=["POST"])
+@require_device_and_version
+@limiter.limit("20 per day")
 def extract_ocr():
     """Trích xuất văn bản từ ảnh bằng Gemini Vision OCR.
 
@@ -26,12 +29,6 @@ def extract_ocr():
     Response: {text, char_count}.
     Rate limit: 20 lượt/ngày/IP (riêng biệt, không trừ vào quota tóm tắt).
     """
-    import logging
-    logger = logging.getLogger("text_summarizer.ocr")
-    logger.info(f"OCR request received: {request.method} {request.path}")
-    logger.info(f"Files: {list(request.files.keys())}")
-    logger.info(f"Form: {list(request.form.keys())}")
-    
     if "image" not in request.files:
         raise AppError(ErrorCode.VALIDATION_ERROR, message="Thiếu field 'image' trong request.")
 

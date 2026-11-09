@@ -264,7 +264,7 @@ class _HomeViewState extends State<HomeView> {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 contentPadding: EdgeInsets.zero,
-                hintText: 'Nhập, dán hoặc quét văn bản cần tóm tắt tại đây...\n(Nhận tóm tắt từ 200 đến 30.000 ký tự)',
+                hintText: 'Nhập, dán hoặc quét văn bản cần tóm tắt tại đây...\n(Nhận tóm tắt từ 400 đến 30.000 ký tự)',
               ),
             );
 
@@ -380,7 +380,7 @@ class _HomeViewState extends State<HomeView> {
               provider: provider,
               lengthKey: 'short',
               title: 'Ngắn',
-              subtitle: '≤ 100 từ',
+              subtitle: '~12% bản gốc',
             ),
             const SizedBox(width: 8),
             _buildLengthChip(
@@ -388,7 +388,7 @@ class _HomeViewState extends State<HomeView> {
               provider: provider,
               lengthKey: 'medium',
               title: 'Vừa',
-              subtitle: '≤ 200 từ',
+              subtitle: '~22% bản gốc',
             ),
             const SizedBox(width: 8),
             _buildLengthChip(
@@ -396,7 +396,7 @@ class _HomeViewState extends State<HomeView> {
               provider: provider,
               lengthKey: 'long',
               title: 'Dài', // Đã đổi nhãn từ 'Chi tiết' thành 'Dài'
-              subtitle: '≤ 350 từ',
+              subtitle: '~35% bản gốc',
             ),
           ],
         ),
@@ -411,16 +411,22 @@ class _HomeViewState extends State<HomeView> {
     required String title,
     required String subtitle,
   }) {
-    final isSelected = provider.selectedLength == lengthKey;
+    final bool isUnlocked = provider.isLengthUnlocked(lengthKey);
+    final bool isSelected = isUnlocked && provider.selectedLength == lengthKey;
+    final String detailText = isUnlocked
+        ? subtitle
+        : 'Cần thêm ~${provider.missingCharsFor(lengthKey)} ký tự';
 
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: provider.isLoading ? null : () => provider.setSelectedLength(lengthKey),
+        onTap: isUnlocked && !provider.isLoading ? () => provider.setSelectedLength(lengthKey) : null,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           decoration: BoxDecoration(
-            color: isSelected ? AppConstants.primaryColor : Colors.white,
+            color: isSelected
+                ? AppConstants.primaryColor
+                : (isUnlocked ? Colors.white : Colors.grey.shade100),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected ? AppConstants.primaryColor : Colors.grey.shade300,
@@ -434,15 +440,20 @@ class _HomeViewState extends State<HomeView> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : AppConstants.textPrimaryColor,
+                  color: isSelected
+                      ? Colors.white
+                      : (isUnlocked ? AppConstants.textPrimaryColor : Colors.grey.shade500),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
-                subtitle,
+                detailText,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
-                  color: isSelected ? Colors.white70 : AppConstants.textSecondaryColor,
+                  color: isSelected
+                      ? Colors.white70
+                      : (isUnlocked ? AppConstants.textSecondaryColor : Colors.grey.shade500),
                 ),
               ),
             ],
@@ -452,9 +463,9 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  /// Nút Tóm tắt chính (Vô hiệu hóa khi đang xử lý hoặc chưa đủ 200 ký tự)
+  /// Nút Tóm tắt chính (Vô hiệu hóa khi đang xử lý hoặc chưa đủ 400 ký tự)
   Widget _buildSubmitButton(BuildContext context, SummaryProvider provider) {
-    final bool canSubmit = provider.isValidLength && !provider.isLoading;
+    final bool canSubmit = provider.canSubmit && !provider.isLoading;
 
     return SizedBox(
       height: 50,

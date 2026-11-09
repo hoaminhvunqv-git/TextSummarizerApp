@@ -21,6 +21,13 @@ class AppConstants {
   static const String defaultBaseUrl = "http://127.0.0.1:5000";
 
   // Quy định độ dài văn bản
-  static const int minChars = 200;
+  static const int minChars = 400;
   static const int maxChars = 30000;
+
+  // Số ký tự tối thiểu của bản gốc để mở khoá từng mốc tóm tắt (docs/SPEC.md 5.1)
+  static const Map<String, int> lengthUnlockChars = {
+    'short': 400,
+    'medium': 1000,
+    'long': 2000,
+  };
 }

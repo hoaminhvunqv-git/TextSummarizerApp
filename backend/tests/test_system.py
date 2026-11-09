@@ -34,11 +34,17 @@ def test_config_endpoint(client):
     assert data["data"]["min_app_version"] == "1.0.0"
 
     limits = data["data"]["limits"]
-    assert limits["min_chars"] == 200
+    assert limits["min_chars"] == 400
     assert limits["max_chars"] == 30000
     assert limits["max_file_mb"] == 10
     assert limits["daily_summary"] == 20
     assert limits["daily_quiz"] == 20
+
+    assert data["data"]["length_unlock_chars"] == {
+        "short": 400,
+        "medium": 1000,
+        "long": 2000,
+    }
 
 
 def test_not_found_endpoint(client):

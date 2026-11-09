@@ -42,7 +42,6 @@ logger = logging.getLogger("text_summarizer")
 
 def create_app(config_class=Config) -> Flask:
     """Application factory khởi tạo ứng dụng Flask."""
-    print("=== CREATING FLASK APP ===")
     app = Flask(__name__)
     app.config.from_object(config_class)
 
@@ -60,11 +59,6 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(summary_bp)
     app.register_blueprint(file_bp)
     app.register_blueprint(ocr_bp)
-    
-    # Test: Register simple route
-    @app.route("/test-ocr", methods=["GET", "POST"])
-    def test_ocr():
-        return {"success": True, "message": "Test OCR route"}
 
     # Đăng ký Global Error Handlers
     @app.errorhandler(AppError)
@@ -79,7 +73,7 @@ def create_app(config_class=Config) -> Flask:
     @app.errorhandler(HTTPException)
     def handle_http_exception(err: HTTPException):
         """Bắt và chuyển đổi các lỗi HTTP chuẩn sang format JSON của dự án."""
-        logger.error(f"HTTPException: {err.code} {err.description} for {request.method} {request.path}")
+        logger.error(f"HTTPException {err.code} tại {request.method} {request.path}")
         status_code = err.code or 500
         if status_code == 404:
             return error_response(

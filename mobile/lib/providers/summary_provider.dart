@@ -26,13 +26,31 @@ class SummaryProvider extends ChangeNotifier {
   bool get isValidLength =>
       charCount >= AppConstants.minChars && charCount <= AppConstants.maxChars;
 
+  int unlockCharsFor(String length) =>
+      AppConstants.lengthUnlockChars[length] ?? AppConstants.minChars;
+
+  bool isLengthUnlocked(String length) => charCount >= unlockCharsFor(length);
+
+  /// Số ký tự bản gốc còn thiếu để mở khoá một mốc tóm tắt
+  int missingCharsFor(String length) {
+    final int missing = unlockCharsFor(length) - charCount;
+    return missing > 0 ? missing : 0;
+  }
+
+  bool get canSubmit => isValidLength && isLengthUnlocked(_selectedLength);
+
   SummaryProvider() {
     textController.addListener(() {
+      // Văn bản bị xoá bớt có thể khiến mốc đang chọn bị khoá lại
+      if (!isLengthUnlocked(_selectedLength)) {
+        _selectedLength = 'short';
+      }
       notifyListeners();
     });
   }
 
   void setSelectedLength(String length) {
+    if (!isLengthUnlocked(length)) return;
     if (_selectedLength != length) {
       _selectedLength = length;
       notifyListeners();
@@ -209,7 +227,7 @@ class SummaryProvider extends ChangeNotifier {
 
   /// Bắt đầu gửi yêu cầu tóm tắt
   Future<void> summarize() async {
-    if (!isValidLength || _isLoading) return;
+    if (!canSubmit || _isLoading) return;
 
     _isLoading = true;
     _errorMessage = null;
