@@ -55,7 +55,7 @@ Request:
 { "text": "<400–30000 ký tự>", "length": "medium" }
 ```
 `length`: `short | medium | long`, mặc định `medium`.
-Giới hạn theo `X-Device-ID`: **20 lượt/ngày** (hết → 429 `QUOTA_EXCEEDED`) và 30 request/phút (→ 429 `RATE_LIMITED`). Ở GĐ1 hai con số này do Flask-Limiter giữ trong RAM với cửa sổ rolling 24h; sang GĐ2 chuyển sang bảng `usage_quota` (đúng mốc nửa đêm +07, đặt chỗ nguyên tử). Trạng thái chuyển tiếp: từ bước 2.4 `GET /usage` đã đọc `usage_quota` thật, nhưng bản thân `POST /summaries` vẫn do Flask-Limiter chặn — hai bộ đếm không chạy đồng thời trên một endpoint, bước 2.5 mới chuyển giao.
+Giới hạn theo `X-Device-ID`: **20 lượt/ngày** (hết → 429 `QUOTA_EXCEEDED`) và 30 request/phút (→ 429 `RATE_LIMITED`). Từ bước 2.5, trần 20 lượt/ngày do bảng `usage_quota` giữ (đặt chỗ nguyên tử, mốc nửa đêm +07, không mất khi restart server); `Flask-Limiter` chỉ còn vai trò 30 request/phút trên route này. `POST /ocr` vẫn dùng `20 per day` của Flask-Limiter cho tới khi `usage_type` có thêm giá trị OCR.
 Độ dài bản tóm tắt = tỷ lệ số từ bản gốc (12% / 22% / 35%, kẹp trong 25–120 / 40–260 / 60–450 từ). Mốc `medium` cần bản gốc ≥ 1.000 ký tự, `long` cần ≥ 2.000 ký tự; chưa đạt thì trả `LENGTH_NOT_UNLOCKED`.
 
 Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
@@ -76,7 +76,7 @@ Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
 }
 ```
 
-Ghi chú GĐ1: `id` = `null` (chưa lưu DB), `usage.summary_remaining` và `usage.quiz_remaining` = `null` (chưa theo dõi quota). Có giá trị thật từ GĐ2.
+Ghi chú theo giai đoạn: ở GĐ1 `id` = `null` và `usage.*` = `null` (chưa lưu DB, chưa theo dõi quota). Từ **bước 2.5**, `id` là số của dòng vừa ghi vào `summaries`, `created_at` là mốc DB ghi nhận đổi sang `+07:00`, `usage.summary_remaining`/`quiz_remaining` có giá trị thật từ `usage_quota`. Nội dung văn bản chỉ được lưu ở dạng mã hóa; response trả plaintext cho đúng người gọi (kiểm tra quyền sở hữu ở 2.6).
 
 ### POST `/files/extract` (multipart, field `file`)
 Response:

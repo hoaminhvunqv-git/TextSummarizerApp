@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.4 xong (`quota_service.py` đã kiểm chứng nguyên tử thật trên Neon, `GET /api/v1/usage` đã có). Bước tiếp theo: **2.5** gắn `reserve()`/`refund()` + lưu bản ghi mã hóa vào `POST /summaries`, và bỏ `@limiter.limit("20 per day")` trên route trong cùng bước.
+Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.5 xong (`POST /summaries` đã trừ quota thật trong `usage_quota` và lưu bản ghi mã hóa, `@limiter.limit("20 per day")` đã bỏ). Bước tiếp theo: **2.6** `GET /summaries` (phân trang), `GET /summaries/{id}`, `DELETE /summaries/{id}` kèm kiểm tra quyền sở hữu — 3 dòng DoD GĐ2 còn lại nằm ở bước này.
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -86,6 +86,11 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - Cách chạy test: `.\.venv\Scripts\pytest tests/test_quota_service.py tests/test_usage_routes.py -v` → **14 passed**; toàn suite **99 passed**.
   - Cách kiểm thật trên Neon (dùng `owner_key` tạm rồi xóa): `reserve` lần 1 → count 1, `refund` → count 0, rồi 30 request song song (6 thread × 5) → **đúng 20 thành công, count trong DB = 20**, request 21 → `QUOTA_EXCEEDED`. Sau đó `DELETE` dòng test, `usage_quota` về 0 dòng.
   - Lỗi vấp khi smoke: script in dòng cuối bằng biến giả `_try_raises` chưa định nghĩa → `NameError` làm chết script **trước** bước dọn DB, phải chạy lại riêng bước kiểm tra + `DELETE`. Kinh nghiệm: smoke script nhiều bước ghi DB thì đặt dọn dẹp trong `finally`.
+- Bước 2.5 (2026-11-10): `POST /api/v1/summaries` chuyển sang ba việc mới trong một request — `quota_service.reserve()` → `GeminiService.summarize()` → `history_service.save_summary()` ghi `summaries` (4 cột `title/description/original_text/summary` mã hóa AES-256-GCM), lỗi ở bất kỳ bước nào sau khi đặt chỗ thì `refund()` hoàn lượt; `@limiter.limit(f"{DAILY_SUMMARY_LIMIT} per day")` **đã bỏ** khỏi route, bộ đếm `usage_quota` là nguồn duy nhất.
+  - File mới: `backend/utils/time_utils.py` (`VN_TZ`, `now_vn()`, `iso_in_vn()` — dùng chung cho cả quota và `created_at`), `backend/services/history_service.py` (toàn bộ SQL của bảng `summaries` nằm ở đây để 2.6 dùng lại được kiểm tra quyền sở hữu). `quota_service.py` refactor để import `VN_TZ`/`iso_in_vn` thay vì tự định nghĩa.
+  - Cách chạy test: `.\.venv\Scripts\pytest tests/test_history_service.py tests/test_summary_routes.py -v` → **21 passed**; toàn suite **109 passed, 1 deselected**. Unit test không chạm Neon hay key thật: fixture `store` fake hoá `reserve/refund/get_usage/save_summary`, test mã hóa dùng key tự sinh trong fixture.
+  - Kết quả thật trên Neon + Gemini (1 request, key thật): `201 | id: 1 | source: gemini`, `usage: {'summary_remaining': 19, 'quiz_remaining': 20}`, 4 cột `*_enc` đều là base64 và **không** chứa plaintext, giải mã ra đúng văn bản gốc; `created_at` API trả `2026-11-10T19:07:47+07:00` trong khi DB giữ `2026-11-10 12:07:47.539579+00:00` — cùng một thời điểm, chỉ khác cách hiển thị. Request sai (`short_100`) → `400 TEXT_TOO_SHORT` và bộ đếm **vẫn 1** (chưa đặt chỗ), xác nhận thứ tự validate trước quota. Script dọn xong: `summaries` 0 dòng, `usage_quota` 0 dòng.
+  - Test chống hồi quy đã thêm: `test_day_limiter_removed_from_summaries` (25 request vẫn 201 khi chỉ còn limiter phút), `test_quota_is_booked_before_calling_ai`, `test_gemini_failure_refunds_the_slot`, `test_save_failure_refunds_the_slot`, `test_summary_persists_for_the_calling_device`.
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -112,13 +117,18 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - `usesCleartextTraffic`: `false` trong `main/AndroidManifest.xml` (release chỉ HTTPS), `true` trong `debug/AndroidManifest.xml` qua `tools:replace` để bản debug vẫn gọi được Flask local.
 - **Giới hạn 20 lượt/ngày phía app làm bằng Flask-Limiter, khóa theo `X-Device-ID`** (user duyệt, thay cho "chờ quota DB ở GĐ2"):
   - Lý do bắt buộc đổi key: Render đặt Flask sau reverse proxy → mọi user chung một IP egress, `key_func=get_remote_address` sẽ gộp toàn bộ người dùng thành một (30 request/phút thành giới hạn của cả hệ thống). `ProxyFix(x_for=1, x_proto=1, x_host=1)` cũng được bật cùng lúc.
-  - Hệ quả: `extensions.py` thêm `get_rate_limit_key()` (device → fallback IP) và `storage_uri=Config.RATELIMIT_STORAGE_URI`; `POST /summaries` gắn `@limiter.limit(f"{Config.DAILY_SUMMARY_LIMIT} per day")`; OCR giữ `20 per day` nhưng giờ tính theo device.
-  - **Khác biệt có ý thức với SPEC 5.5** (đã ghi lại vào SPEC): cửa sổ rolling 24h chứ không phải nửa đêm +07, và bộ đếm nằm trong RAM nên Reset khi restart/cold start. GĐ2 thay bằng `usage_quota` + đặt chỗ nguyên tử.
+  - Hệ quả: `extensions.py` thêm `get_rate_limit_key()` (device → fallback IP) và `storage_uri=Config.RATELIMIT_STORAGE_URI`; `POST /summaries` gắn `@limiter.limit(f"{Config.DAILY_SUMMARY_LIMIT} per day")`; OCR giữ `20 per day` nhưng giờ tính theo device. **(Từ bước 2.5: giới hạn ngày trên `/summaries` đã bỏ — xem bullet "Quota ngày của `/summaries` chuyển sang `usage_quota`" bên dưới; RAM chỉ còn áp dụng cho `/ocr`.)**
+  - **Khác biệt có ý thức với SPEC 5.5** (đã ghi lại vào SPEC): cửa sổ rolling 24h chứ không phải nửa đêm +07, và bộ đếm nằm trong RAM nên Reset khi restart/cold start. GĐ2 thay bằng `usage_quota` + đặt chỗ nguyên tử — đã thay xong cho `/summaries` ở bước 2.5, `/ocr` vẫn còn khác biệt này tới khi `usage_type` nhận thêm OCR (GĐ3).
 - **429 chia làm hai thông điệp:** giới hạn scope `day` trả `QUOTA_EXCEEDED` ("hết quota trong ngày"), scope `minute` trả `RATE_LIMITED` ("thao tác quá nhanh"). `app.py` đọc `err.limit.limit.GRANULARITY.name` để phân biệt. Test `test_ocr_rate_limit` đổi kỳ vọng sang `QUOTA_EXCEEDED`.
 - **Lớp DB khởi tạo lười để giữ bất biến "dừng ở giai đoạn nào cũng deploy được"** (user chốt 2026-11-10): `database/db.py` chỉ mở `ThreadedConnectionPool` ở lần `getconn()` đầu tiên, mọi chỗ khác đọc `DATABASE_URL` với default rỗng.
   - Hệ quả kiểm chứng được: xóa/để trống `DATABASE_URL` thì `create_app()` vẫn boot, `/health` và `/api/v1/config` vẫn 200 — test `test_backend_boots_without_database_url`.
   - Route nào cần DB mà chưa cấu hình sẽ nhận `RuntimeError` → handler 500 `INTERNAL_ERROR`; không có đường im lặng trả dữ liệu rỗng.
   - `migrate.py` vẫn yêu cầu `DATABASE_URL` và báo thẳng "Thiếu DATABASE_URL trong backend/.env" (exit 1) vì migration là thao tác một lần, không ảnh hưởng boot.
+- **Quota ngày của `/summaries` chuyển từ RAM sang `usage_quota`, bỏ limiter `20 per day` trong cùng bước 2.5** (user duyệt kế hoạch GĐ2):
+  - Lý do bắt buộc bỏ limiter: hai bộ đếm không được chạy đồng thời trên một endpoint, nếu không limiter rolling 24h sẽ chặn trước cả khi `reserve()` kịp trả lời, và con số hiển thị ở `GET /usage` sẽ sai lệch với con số thật đã trừ. Route chỉ còn limiter 30 request/phút (chống spam, không phải quota).
+  - `OCR` vẫn giữ `@limiter.limit("20 per day")` vì `usage_type` trong DB chỉ cho phép `SUMMARY`/`QUIZ`; mở cho OCR là thay đổi CHECK constraint, để GĐ3.
+  - Thứ tự trong request là **validate → reserve → gọi AI → lưu DB**: validate trước để request sai không đốt lượt; `refund()` chạy trong `except` cho cả lỗi Gemini lẫn lỗi ghi DB, và lỗi hoàn lượt chỉ được log (`logger.error(type(exc).__name__)`, không log nội dung) để không che lỗi gốc.
+  - `created_at` trả về lấy từ `RETURNING created_at` của DB rồi `iso_in_vn()`, không dùng `datetime.now()` ở route: thời điểm lưu DB và thời điểm API nói là một.
 - **Chưa làm (cố ý, để GĐ4):** ký keystore chính thức — APK release hiện ký debug key, cài được nhưng không phải bản phát hành lâu dài; `build.gradle.kts` chưa đọc `key.properties`.
 
 ## Thay đổi thiết kế (2026-11-09)
@@ -173,7 +183,8 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 
 ## Lỗi đã biết / việc cần nhớ
 - **Trần 20 lượt/ngày của Google tính theo API key, không theo người dùng.** Giới hạn `X-Device-ID` ở app chỉ ngăn một người đốt bừa; tổng sức chứa vẫn là 20 bản tóm tắt/ngày cho **toàn bộ** user nếu key chưa bật billing. Muốn phục vụ nhiều người thật phải bật billing trên Google Cloud project của key (quyết định tiền của người dùng).
-- **Bộ đếm 20/ngày nằm trong RAM**: Render free ngủ khi vắng khách, mỗi lần thức dậy hoặc restart là `Flask-Limiter` quên hết → mọi thiết bị được hoàn lượt. Đây là đánh đổi đã chấp nhận ở GĐ1.5, GĐ2 thay bằng bảng `usage_quota`.
+- **Bộ đếm 20/ngày nằm trong RAM — chỉ còn đúng với `/ocr`**: Render free ngủ khi vắng khách, mỗi lần thức dậy hoặc restart là `Flask-Limiter` quên hết → thiết bị được hoàn lượt. `/summaries` đã thoát khỏi đánh đổi này từ bước 2.5 (đếm trong `usage_quota`, nửa đêm +07, đặt chỗ nguyên tử); `/ocr` còn cho tới khi `usage_type` nhận thêm OCR ở GĐ3.
+- **`POST /summaries`, `GET /summaries*` và `GET /usage` cần `DATABASE_URL`**: để trống thì app vẫn boot (`/health`, `/api/v1/config` vẫn 200 — cố ý, giữ bất biến deploy được ở mọi giai đoạn) nhưng các route DB trả 500 `INTERNAL_ERROR` ngay lần gọi đầu tiên, không trả dữ liệu rỗng giả. Deploy GĐ2 trở đi mà quên biến này là toàn bộ luồng tóm tắt chết, không phải chỉ lịch sử.
 - **Cold start 30–60s**: request đầu tiên sau thời gian vắng hay timeout nếu Dio đặt dưới 60s; UX "Đang đánh thức máy chủ..." (SPEC 2.3) là hành vi đúng, không phải lỗi kết nối.
 - **`--bind 0.0.0.0:$PORT` trong `startCommand` là bắt buộc**: `app.py` chỉ đọc `PORT` khi chạy `app.run()`, còn gunicorn bỏ qua lệnh đó → thiếu `--bind` thì Render báo "Application failed to respond".
 - **Key JSON trong body `/summaries` là `length`, không phải `selected_length`**: backend bỏ qua key lạ và dùng mặc định `medium`, nên nếu script test gõ nhầm thì ngưỡng mở khoá bị check sai (ra 1000 ký tự thay vì 2000) và rất dễ kết luận nhầm "khoá mốc `long` bị lỗi". Ngày 2026-11-09 đã vấp đúng ca này khi tự viết script curl; code và docs đều đúng, lỗi ở script.
@@ -196,7 +207,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -q            # 75 tests, không gọi API thật, không cần DATABASE_URL
+  .\.venv\Scripts\pytest -q            # 109 tests, không gọi API thật, không cần DATABASE_URL
   .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
   ```
 - Áp migration lên DB thật (chạy khi mới tạo DB hoặc mỗi lần thêm file trong `database/migrations/`):
@@ -270,6 +281,6 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
     -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" \
     -H "X-App-Version: 1.0.0" -d @"$D/vi_500.json"
   ```
-  Mong đợi: 201, `data.source=gemini`, `data.language=vi`, `id=null`, `usage` gồm 2 trường `null`.
+  Mong đợi: 201, `data.source=gemini`, `data.language=vi`, `data.id` là số nguyên thật (bản ghi đã lưu trong `summaries`), `usage.summary_remaining` giảm 1 và `usage.quiz_remaining` = 20. Từ GĐ2 curl thật **cần** `DATABASE_URL` và `ENCRYPTION_KEY`, mỗi request thành công trừ 1 trong 20 lượt ngày hôm đó theo `X-Device-ID`.
   Test fallback: chạy server khác cổng với key sai — `PORT=5001 GEMINI_API_KEY=sai python app.py` → vẫn 201 nhưng `source=tfidf`.
-  Lưu ý giới hạn 30 request/phút/IP khi curl nhiều lần liên tiếp (nghỉ 1 phút hoặc đặt `RATELIMIT_ENABLED=0`).
+  Lưu ý giới hạn 30 request/phút/IP khi curl nhiều lần liên tiếp (nghỉ 1 phút hoặc đặt `RATELIMIT_ENABLED=0`). Giới hạn 20 lượt/ngày không còn do Flask-Limiter giữ nữa nên đổi `RATELIMIT_ENABLED` không mở thêm được lượt tóm tắt.

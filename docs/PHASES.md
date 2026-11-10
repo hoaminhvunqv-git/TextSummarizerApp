@@ -78,13 +78,13 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 7. Flutter: HistoryView (pull-to-refresh, empty state, xóa), SummaryDetailView, hiển thị lượt còn lại.
 
 ### ✅ DoD Giai đoạn 2
-- [ ] Xem trực tiếp bảng `summaries` trên dashboard: các cột `*_enc` là chuỗi base64 khó đọc, không có plaintext.
-- [ ] Tạo bản tóm tắt → xuất hiện trong lịch sử với nội dung giải mã đúng.
-- [ ] Đổi `X-Device-ID` khác → **không** thấy/đọc được/xóa được bản ghi của device cũ (404).
-- [ ] Gửi 21 lần → lần 21 trả `QUOTA_EXCEEDED`; request lỗi (ví dụ quá ngắn) **không** làm tăng số lượt; bấm 2 request song song không vượt quota.
-- [ ] Xóa 1 bản tóm tắt → biến mất khỏi DB.
-- [ ] Log server không chứa nội dung văn bản.
-- [ ] `pytest` (crypto, validators) xanh.
+- [x] Xem trực tiếp bảng `summaries` trên dashboard: các cột `*_enc` là chuỗi base64 khó đọc, không có plaintext. *(2026-11-10: `SELECT` bản ghi thật vừa ghi — 4 cột base64, giải mã bằng `ENCRYPTION_KEY` ra đúng nội dung, `original_length=1272`; dòng test đã xóa sau khi kiểm.)*
+- [ ] Tạo bản tóm tắt → xuất hiện trong lịch sử với nội dung giải mã đúng. *(chờ 2.6)*
+- [ ] Đổi `X-Device-ID` khác → **không** thấy/đọc được/xóa được bản ghi của device cũ (404). *(chờ 2.6)*
+- [x] Gửi 21 lần → lần 21 trả `QUOTA_EXCEEDED`; request lỗi (ví dụ quá ngắn) **không** làm tăng số lượt; bấm 2 request song song không vượt quota. *(2026-11-10: 30 request song song trên Neon → đúng 20 thành công, count=20, lượt 21 `QUOTA_EXCEEDED` và không gọi AI; `TEXT_TOO_SHORT` không đổi count.)*
+- [ ] Xóa 1 bản tóm tắt → biến mất khỏi DB. *(chờ 2.6)*
+- [x] Log server không chứa nội dung văn bản. *(2026-11-10: log chỉ `length=1272 | time=10.55s | source`, handler 500 chỉ ghi tên exception.)*
+- [x] `pytest` (crypto, validators) xanh. *(2026-11-10: 109 passed, 1 deselected.)*
 
 ---
 

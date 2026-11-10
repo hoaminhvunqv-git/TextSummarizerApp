@@ -5,21 +5,19 @@ Một lượt hợp lệ = tăng `count` của dòng `(owner_key, usage_type, us
 song song không thể cùng vượt trần và request lỗi không ăn lượt (refund).
 """
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 try:
     from backend.config import Config
     from backend.database.db import connection, transaction
     from backend.utils.errors import AppError, ErrorCode
+    from backend.utils.time_utils import VN_TZ, iso_in_vn, now_vn
 except ImportError:
     from config import Config
     from database.db import connection, transaction
     from utils.errors import AppError, ErrorCode
-
-# Việt Nam không có DST nên dùng offset cố định: Windows (không có tzdata) và
-# Render cho cùng một kết quả, không lệch ngày giữa dev và production.
-VN_TZ = timezone(timedelta(hours=7))
+    from utils.time_utils import VN_TZ, iso_in_vn, now_vn
 
 USAGE_SUMMARY = "SUMMARY"
 USAGE_QUIZ = "QUIZ"
@@ -56,7 +54,7 @@ def today_vn() -> date:
 def resets_at(day: Optional[date] = None) -> str:
     """Thời điểm quota reset = nửa đêm +07 của ngày kế tiếp."""
     next_day = (day or today_vn()) + timedelta(days=1)
-    return datetime.combine(next_day, time.min, tzinfo=VN_TZ).isoformat(timespec="seconds")
+    return iso_in_vn(datetime.combine(next_day, time.min, tzinfo=VN_TZ))
 
 
 def owner_key(device_id: Optional[str] = None, user_id: Optional[int] = None) -> str:

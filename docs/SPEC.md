@@ -104,10 +104,12 @@ TextSummarizerAI/
 │   ├── .env.example            # commit, chỉ có tên biến
 │   ├── requirements.txt
 │   ├── render.yaml
-│   ├── routes/                 # summary_routes.py, quiz_routes.py, auth_routes.py, file_routes.py, system_routes.py
-│   ├── services/               # gemini_service.py, tfidf_service.py, crypto_service.py,
-│   │                           # file_service.py, quota_service.py, email_service.py, auth_service.py
-│   ├── utils/                  # responses.py, errors.py, validators.py, text_utils.py, auth_utils.py
+│   ├── routes/                 # system_routes.py, summary_routes.py, file_routes.py, ocr_routes.py,
+│   │                           # usage_routes.py, quiz_routes.py, auth_routes.py
+│   ├── services/               # gemini_service.py, tfidf_service.py, ocr_service.py, file_service.py,
+│   │                           # crypto_service.py, quota_service.py, history_service.py,
+│   │                           # email_service.py, auth_service.py
+│   ├── utils/                  # responses.py, errors.py, validators.py, text_utils.py, time_utils.py, auth_utils.py
 │   ├── database/
 │   │   ├── db.py               # connection pool
 │   │   ├── migrate.py          # chạy các file trong migrations/ chưa áp dụng
@@ -126,7 +128,7 @@ TextSummarizerAI/
         ├── widgets/            # component dùng lại (SummaryCard, LoadingOverlay, EmptyState, ...)
         └── views/              # home_view, history_view, summary_detail_view, quiz_view, auth_view
 ```
-> `ocr_service.py` ở backend **đã bỏ** vì OCR chạy trên thiết bị. Chỉ thêm lại nếu dùng phương án B (Gemini Vision, mục 5.3).
+> `ocr_service.py` **đang dùng** vì OCR đã chọn phương án B — Gemini Vision (mục 5.3, kiểm chứng trên `ocr_vi.jpg` ngày 2026-11-09); ML Kit on-device đã bỏ vì sai dấu tiếng Việt.
 
 ---
 
@@ -188,7 +190,7 @@ TextSummarizerAI/
 - Cách tính (chống bấm đúp/race): **đặt chỗ nguyên tử** trước khi gọi AI (SQL `INSERT ... ON CONFLICT DO UPDATE ... WHERE count < limit RETURNING`), nếu xử lý **thất bại** (lỗi validate sau đặt chỗ, lỗi hệ thống, `AI_UNAVAILABLE` của quiz) thì **hoàn lại** 1 lượt. Thành công (kể cả bằng fallback TF-IDF) thì giữ.
 - Hết quota: `QUOTA_EXCEEDED` (429) — *"Bạn đã dùng hết quota trong ngày. Vui lòng quay lại vào ngày mai."*
 - Lưu trong **bảng DB `usage_quota`** (không dùng bộ nhớ RAM). `Flask-Limiter` chỉ chống spam theo IP (ví dụ 30 request/phút/IP; auth endpoints chặt hơn: 5/phút/IP).
-- **Ngoại lệ tạm thời (2026-11-10, phục vụ deploy sớm trước GĐ2):** vì GĐ1 chưa có DB, `Flask-Limiter` được dùng luôn cho mức **20 tóm tắt/ngày** và **20 OCR/ngày**, với `key_func` lấy **`X-Device-ID`** (fallback IP khi header vắng) chứ không theo IP — đứng sau proxy Render thì mọi user chung một IP egress, key theo IP sẽ gộp toàn bộ người dùng thành một. Hai giới hạn `per day` này là **cửa sổ rolling 24h trong RAM**, không phải mốc nửa đêm +07, và **Reset khi server khởi động lại hoặc thức dậy sau cold start**. Sang GĐ2, `quota_service.py` + bảng `usage_quota` thay thế hoàn toàn (đặt chỗ nguyên tử, đúng mốc nửa đêm +07, không mất khi restart); `Flask-Limiter` khi đó quay về đúng vai trò chống spam phút. **Trạng thái chuyển tiếp (bước 2.4):** `GET /usage` và `quota_service` đã đọc/ghi `usage_quota` thật, nhưng `POST /summaries` và `POST /ocr` **vẫn đang** bị chặn bằng `20 per day` của Flask-Limiter — bước 2.5 mới gắn `reserve()` vào `/summaries` và bỏ decorator đó cùng một lúc, để không có khoảng trống nào mà endpoint mất hết giới hạn.
+- **Ngoại lệ tạm thời (2026-11-10, phục vụ deploy sớm trước GĐ2):** vì GĐ1 chưa có DB, `Flask-Limiter` được dùng luôn cho mức **20 tóm tắt/ngày** và **20 OCR/ngày**, với `key_func` lấy **`X-Device-ID`** (fallback IP khi header vắng) chứ không theo IP — đứng sau proxy Render thì mọi user chung một IP egress, key theo IP sẽ gộp toàn bộ người dùng thành một. Hai giới hạn `per day` này là **cửa sổ rolling 24h trong RAM**, không phải mốc nửa đêm +07, và **Reset khi server khởi động lại hoặc thức dậy sau cold start**. Sang GĐ2, `quota_service.py` + bảng `usage_quota` thay thế hoàn toàn (đặt chỗ nguyên tử, đúng mốc nửa đêm +07, không mất khi restart); `Flask-Limiter` khi đó quay về đúng vai trò chống spam phút. **Trạng thái từ bước 2.5:** `POST /summaries` đã chuyển hẳn sang `quota_service` + bảng `usage_quota` (đặt chỗ trước khi gọi AI, hoàn lại khi xử lý thất bại) và `@limiter.limit("20 per day")` trên route bị bỏ trong chính bước đó — không có lúc nào endpoint bị hai bộ đếm cùng chặn, hoặc không bộ đếm nào. `POST /ocr` vẫn dùng `20 per day` của Flask-Limiter vì ràng buộc `usage_type` trong schema chỉ nhận `SUMMARY`/`QUIZ`; thêm giá trị OCR là sửa schema nên để GĐ3.
 - Header `X-Device-ID` (UUID v4) bắt buộc với mọi endpoint nghiệp vụ; sai định dạng → `INVALID_DEVICE_ID`.
 
 ### 5.6. Fallback tóm tắt
