@@ -1,0 +1,38 @@
+# Blueprint deploy Render cho backend Flask (xem docs/SPEC.md 2.3 và docs/PHASES.md "Giai đoạn 1.5").
+# Render đọc file này khi tạo Web Service từ repo; giá trị secret không nằm trong git.
+services:
+  - type: web
+    name: textsummarizer-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    # gunicorn bỏ qua app.run() nên phải bind explicit vào $PORT của Render.
+    # --workers 1 là bắt buộc: bộ đếm Flask-Limiter nằm trong RAM (SPEC 2.2).
+    startCommand: gunicorn app:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.17
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: GEMINI_TIMEOUT_SECONDS
+        value: "15"
+      - key: GEMINI_MAX_RETRY
+        value: "1"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "30"
+      - key: RATELIMIT_ENABLED
+        value: "1"
+      - key: RATELIMIT_STORAGE_URI
+        value: memory://
+      # Key Gemini: điền tay trong Render dashboard (sync:false = blueprint không mang giá trị).
+      - key: GEMINI_API_KEY
+        sync: false
+      # DATABASE_URL / ENCRYPTION_KEY / JWT_SECRET chưa cần ở giai đoạn này:
+      # config.py đọc chúng với default rỗng và GĐ1 không chạm DB hay mã hoá.

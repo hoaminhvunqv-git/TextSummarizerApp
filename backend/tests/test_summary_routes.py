@@ -244,3 +244,24 @@ def test_health_exempt_from_rate_limit():
     for _ in range(Config.RATE_LIMIT_PER_MINUTE + 5):
         assert client.get("/health").status_code == 200
     limiter.reset()
+
+
+def test_daily_summary_limit_is_per_device(mock_gemini):
+    """Giới hạn 20 lượt/ngày chốt theo X-Device-ID, không theo IP — thiết bị khác còn lượt."""
+    app = create_app(RateLimitConfig)
+    limiter.reset()
+    client = app.test_client()
+    text = read_testdata("en_400.txt")
+    other_device = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
+    for i in range(Config.DAILY_SUMMARY_LIMIT):
+        resp = post_summary(client, text, "short")
+        assert resp.status_code == 201, f"lượt {i + 1} bị chặn sớm"
+
+    resp = post_summary(client, text, "short")
+    assert resp.status_code == 429
+    assert resp.get_json()["error_code"] == "QUOTA_EXCEEDED"
+
+    resp = post_summary(client, text, "short", headers={"X-Device-ID": other_device, "X-App-Version": "1.0.0"})
+    assert resp.status_code == 201
+    limiter.reset()

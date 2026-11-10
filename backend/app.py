@@ -11,12 +11,14 @@ for p in (str(BASE_DIR), str(REPO_ROOT)):
 import logging
 from flask import Flask, request
 from flask_cors import CORS
+from flask_limiter.errors import RateLimitExceeded
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 try:
     from backend.config import Config
     from backend.extensions import limiter
-    from backend.utils.errors import AppError, ErrorCode
+    from backend.utils.errors import AppError, ERROR_DEFINITIONS, ErrorCode
     from backend.utils.responses import error_response
     from backend.routes.system_routes import system_bp
     from backend.routes.summary_routes import summary_bp
@@ -25,7 +27,7 @@ try:
 except ImportError:
     from config import Config
     from extensions import limiter
-    from utils.errors import AppError, ErrorCode
+    from utils.errors import AppError, ERROR_DEFINITIONS, ErrorCode
     from utils.responses import error_response
     from routes.system_routes import system_bp
     from routes.summary_routes import summary_bp
@@ -40,6 +42,15 @@ logging.basicConfig(
 logger = logging.getLogger("text_summarizer")
 
 
+def _limit_granularity(err) -> str:
+    """Trả về 'day'/'minute'/... của giới hạn Flask-Limiter vừa chạm trần, hoặc '' nếu không phải."""
+    if not isinstance(err, RateLimitExceeded):
+        return ""
+    # Đường đi này thuộc internals của flask_limiter/limits, không có API công khai.
+    rate_item = getattr(getattr(err, "limit", None), "limit", None)
+    return getattr(getattr(rate_item, "GRANULARITY", None), "name", "") or ""
+
+
 def create_app(config_class=Config) -> Flask:
     """Application factory khởi tạo ứng dụng Flask."""
     app = Flask(__name__)
@@ -51,7 +62,11 @@ def create_app(config_class=Config) -> Flask:
     # Bật CORS cho môi trường dev/web test (mobile app giao tiếp qua HTTPS không cần CORS)
     CORS(app)
 
-    # Giới hạn spam theo IP (quota nghiệp vụ theo ngày thuộc GĐ2)
+    # Render đặt Flask sau reverse proxy: không có ProxyFix thì request.remote_addr
+    # luôn là IP của proxy và mọi người dùng bị tính chung một giới hạn.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    # Giới hạn spam: mặc định 30/phút và 20/ngày, chốt theo X-Device-ID (xem extensions.py)
     limiter.init_app(app)
 
     # Đăng ký Blueprints
@@ -88,6 +103,14 @@ def create_app(config_class=Config) -> Flask:
                 status_code=413,
             )
         if status_code == 429:
+            # 429 do Flask-Limiter ném ra có hai loại: chặn spam theo phút và trần
+            # 20 lượt/ngày theo thiết bị. Trần ngày phải báo hết lượt, không báo "thao tác nhanh quá".
+            if _limit_granularity(err) == "day":
+                return error_response(
+                    error_code=ErrorCode.QUOTA_EXCEEDED,
+                    message=ERROR_DEFINITIONS[ErrorCode.QUOTA_EXCEEDED][1],
+                    status_code=429,
+                )
             return error_response(
                 error_code=ErrorCode.RATE_LIMITED,
                 message="Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.",

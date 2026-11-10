@@ -5,7 +5,7 @@ Base URL: `https://<host>/api/v1`  ·  Content-Type: `application/json` (trừ u
 ## 1. Header chung
 | Header | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `X-Device-ID` | Có (mọi endpoint nghiệp vụ) | UUID v4 do app tạo, lưu trong `flutter_secure_storage` |
+| `X-Device-ID` | Có (mọi endpoint nghiệp vụ) | UUID v4 do app tạo, lưu trong `flutter_secure_storage`; từ 2026-11-10 còn là **khóa tính giới hạn 20 lượt/ngày** (thay cho IP, vì backend chạy sau proxy Render) |
 | `X-App-Version` | Có | Ví dụ `1.0.0`; thấp hơn `min_app_version` → 426 |
 | `Authorization: Bearer <JWT>` | Tùy chọn | Có → định danh theo user; không có → theo device |
 
@@ -19,6 +19,7 @@ Base URL: `https://<host>/api/v1`  ·  Content-Type: `application/json` (trừ u
 { "success": false, "error_code": "TEXT_TOO_SHORT", "message": "Văn bản quá ngắn để tóm tắt. Hãy nhập ít nhất 400 ký tự." }
 ```
 Mọi exception không lường trước → `500 INTERNAL_ERROR` (không lộ stack trace).
+App **hiển thị nguyên văn `message`** cho mọi lỗi mà request đi tới được backend (kể cả 4xx/5xx, tức cả 429 hết lượt); thông điệp "chưa thể kết nối tới máy chủ AI" chỉ dùng khi không nhận được response nào.
 
 ## 3. Danh sách endpoint
 
@@ -54,6 +55,7 @@ Request:
 { "text": "<400–30000 ký tự>", "length": "medium" }
 ```
 `length`: `short | medium | long`, mặc định `medium`.
+Giới hạn theo `X-Device-ID`: **20 lượt/ngày** (hết → 429 `QUOTA_EXCEEDED`) và 30 request/phút (→ 429 `RATE_LIMITED`). Ở GĐ1 hai con số này do Flask-Limiter giữ trong RAM với cửa sổ rolling 24h; sang GĐ2 chuyển sang bảng `usage_quota` (đúng mốc nửa đêm +07, đặt chỗ nguyên tử).
 Độ dài bản tóm tắt = tỷ lệ số từ bản gốc (12% / 22% / 35%, kẹp trong 25–120 / 40–260 / 60–450 từ). Mốc `medium` cần bản gốc ≥ 1.000 ký tự, `long` cần ≥ 2.000 ký tự; chưa đạt thì trả `LENGTH_NOT_UNLOCKED`.
 
 Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
@@ -91,9 +93,9 @@ Response:
 { "success": true, "message": "Xử lý thành công",
   "data": { "text": "Nội dung văn bản trích xuất từ ảnh...", "char_count": 1234 } }
 ```
-Lỗi: `FILE_TOO_LARGE` (413), `FILE_UNSUPPORTED` (sai định dạng), `OCR_NO_TEXT` (không nhận diện được chữ), `RATE_LIMITED` (429, vượt 20 lượt/ngày/IP).
+Lỗi: `FILE_TOO_LARGE` (413), `FILE_UNSUPPORTED` (sai định dạng), `OCR_NO_TEXT` (không nhận diện được chữ), `QUOTA_EXCEEDED` (429, vượt 20 lượt/ngày/thiết bị).
 
-Ghi chú: OCR dùng Gemini Vision API, chịu giới hạn rate limit riêng (20 lượt/ngày/IP) và không trừ vào quota tóm tắt.
+Ghi chú: OCR dùng Gemini Vision API, chịu giới hạn riêng (20 lượt/ngày theo `X-Device-ID`) và không trừ vào giới hạn tóm tắt.
 
 ### GET `/usage`
 ```json
@@ -209,8 +211,8 @@ Lỗi: `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`.
 | `OTP_EXPIRED` | 400 | Mã OTP đã hết hạn. Hãy yêu cầu mã mới. |
 | `OTP_TOO_MANY_ATTEMPTS` | 429 | Nhập sai quá nhiều lần. Hãy yêu cầu mã mới. |
 | `OTP_RESEND_COOLDOWN` | 429 | Vui lòng đợi 60 giây trước khi gửi lại mã. |
-| `QUOTA_EXCEEDED` | 429 | Bạn đã dùng hết quota trong ngày. Vui lòng quay lại vào ngày mai. |
-| `RATE_LIMITED` | 429 | Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút. |
+| `QUOTA_EXCEEDED` | 429 | Bạn đã dùng hết quota trong ngày. Vui lòng quay lại vào ngày mai. *(GĐ1: do Flask-Limiter theo `X-Device-ID`, rolling 24h; GĐ2: do bảng `usage_quota`.)* |
+| `RATE_LIMITED` | 429 | Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút. *(chỉ giới hạn số request/phút)* |
 | `UPDATE_REQUIRED` | 426 | Vui lòng cập nhật ứng dụng lên phiên bản mới. |
 | `AI_UNAVAILABLE` | 503 | Tính năng tạo quiz tạm thời không khả dụng. Vui lòng thử lại sau. |
 | `INTERNAL_ERROR` | 500 | Đã có lỗi xảy ra. Vui lòng thử lại. |

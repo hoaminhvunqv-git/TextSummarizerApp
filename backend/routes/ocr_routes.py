@@ -27,7 +27,7 @@ def extract_ocr():
 
     Request: multipart/form-data, field 'image' (JPEG/PNG/WebP, tối đa 4MB).
     Response: {text, char_count}.
-    Rate limit: 20 lượt/ngày/IP (riêng biệt, không trừ vào quota tóm tắt).
+    Rate limit: 20 lượt/ngày/thiết bị (riêng biệt, không trừ vào giới hạn tóm tắt).
     """
     if "image" not in request.files:
         raise AppError(ErrorCode.VALIDATION_ERROR, message="Thiếu field 'image' trong request.")

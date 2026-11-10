@@ -247,8 +247,21 @@ class SummaryProvider extends ChangeNotifier {
       } else {
         _errorMessage = response.data['message'] ?? 'Không thể tóm tắt văn bản.';
       }
+    } on DioException catch (e) {
+      if (e.response != null) {
+        // Request tới được backend: server đã giải thích bằng tiếng Việt, dùng lại lời đó
+        // (hết lượt, văn bản quá ngắn, mốc chưa mở khoá, buộc cập nhật app...).
+        final errorData = e.response!.data;
+        if (errorData is Map<String, dynamic>) {
+          _errorMessage = errorData['message'] ?? 'Không thể tóm tắt văn bản.';
+        } else {
+          _errorMessage = 'Không thể tóm tắt văn bản.';
+        }
+      } else {
+        _errorMessage = 'Chưa thể kết nối tới máy chủ AI. Vui lòng kiểm tra lại mạng.';
+      }
     } catch (e) {
-      _errorMessage = 'Chưa thể kết nối tới máy chủ AI. Vui lòng kiểm tra lại mạng.';
+      _errorMessage = 'Đã có lỗi xảy ra khi tóm tắt.';
     } finally {
       _isLoading = false;
       notifyListeners();

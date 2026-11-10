@@ -33,17 +33,37 @@
 
 ### 1C. Nối và kiểm thử
 Chạy bộ `testdata/`; **kiểm thử OCR tiếng Việt** qua Gemini Vision API (`ocr_vi.jpg`).
+→ Phần backend + OCR đã kiểm thử xong bằng curl ngày 2026-11-09 (kết quả ở `PROGRESS.md`). còn lại: chạy end-to-end trên máy Android thật.
 
 ### ✅ DoD Giai đoạn 1
-- [ ] curl: `en_400.txt` → 201, `language=en`, `source=gemini`.
-- [ ] curl: `vi_2500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (1 đoạn văn duy nhất).
-- [ ] curl: `short_100.txt` + `en_250.txt` → 400 `TEXT_TOO_SHORT`; `long_31000.txt` → 400 `TEXT_TOO_LONG`.
-- [ ] curl: `en_400.txt` với `length=medium` hoặc `long` → 400 `LENGTH_NOT_UNLOCKED`; `vi_1200.txt` + `length=long` → 400 `LENGTH_NOT_UNLOCKED`.
-- [ ] Đặt sai `GEMINI_API_KEY` → vẫn 201 với `source=tfidf`.
-- [ ] `injection.txt` → vẫn ra bản tóm tắt bình thường.
-- [ ] Upload: `scanned.pdf` → `PDF_SCANNED`; `big_11mb.pdf` → `FILE_TOO_LARGE`; DOCX/TXT/PDF thường → trích xuất đúng.
+- [x] curl: `en_400.txt` → 201, `language=en`, `source=gemini`.
+- [x] curl: `vi_2500.txt` → bản tóm tắt tiếng Việt, đúng định dạng (1 đoạn văn duy nhất).
+- [x] curl: `short_100.txt` + `en_250.txt` → 400 `TEXT_TOO_SHORT`; `long_31000.txt` → 400 `TEXT_TOO_LONG`.
+- [x] curl: `en_400.txt` với `length=medium` hoặc `long` → 400 `LENGTH_NOT_UNLOCKED`; `vi_1200.txt` + `length=long` → 400 `LENGTH_NOT_UNLOCKED`.
+- [x] Đặt sai `GEMINI_API_KEY` → vẫn 201 với `source=tfidf`.
+- [x] `injection.txt` → vẫn ra bản tóm tắt bình thường.
+- [x] Upload: `scanned.pdf` → `PDF_SCANNED`; `big_11mb.pdf` → `FILE_TOO_LARGE`; DOCX/TXT/PDF thường → trích xuất đúng.
+- [x] curl `POST /ocr` với `ocr_vi.jpg` → 200, tiếng Việt có dấu chính xác (~7,2s).
 - [ ] App (debug trên máy thật): dán chữ, quét ảnh (sửa được), chọn file → đều ra kết quả; lỗi hiển thị đúng message.
-- [ ] Không có secret nào trong git (`git log -p | grep -i key` sạch); `pytest` xanh.
+- [x] Không có secret nào trong git (`git log -p | grep -i key` sạch); `pytest` xanh.
+
+---
+
+## Giai đoạn 1.5 — Deploy sớm (kéo 2 việc của GĐ4 lên, 2026-11-10)
+
+Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **ngay khi GĐ1 xong**, không chờ GĐ2–GĐ4. Không auth, không DB, không quiz.
+
+1. Backend: `ProxyFix` + `Flask-Limiter` khóa theo `X-Device-ID`, thêm `20 per day` cho `POST /summaries`; `gunicorn` vào `requirements.txt` (marker non-Windows); `render.yaml` ở gốc repo.
+2. Flutter: `defaultBaseUrl` lấy từ `--dart-define=BASE_URL`; `usesCleartextTraffic=false` ở `main`, `true` ở `debug`.
+3. **Người dùng làm:** tạo Web Service trên Render (hoặc `render.yaml` blueprint), điền `GEMINI_API_KEY` trong dashboard, kiểm `GET /health` ra 200.
+4. **Người dùng làm:** build `flutter build apk --release --split-per-abi --dart-define=BASE_URL=https://<app>.onrender.com`, cài lên máy không cắm cáp, test 4G/WiFi khác.
+
+### ✅ DoD Giai đoạn 1.5
+- [ ] `curl https://<app>.onrender.com/health` → 200 từ máy không cùng mạng.
+- [ ] APK release (debug build cũ vẫn chạy `adb reverse`) gọi được API Render, `source=gemini`.
+- [ ] Thiết bị A gửi 21 lượt → lượt 21 trả 429 `QUOTA_EXCEEDED`; thiết bị B vẫn 201.
+- [ ] `pytest` xanh; `git log -p` vẫn không có secret (key chỉ nằm trong Render dashboard).
+- Ghi chú chưa có ở giai đoạn này (đón ở GĐ4 bước 7): ký keystore chính thức; APK release hiện ký bằng debug key, vẫn cài được nhưng **không** dùng để phát hành lâu dài.
 
 ---
 
@@ -93,8 +113,8 @@ Chạy bộ `testdata/`; **kiểm thử OCR tiếng Việt** qua Gemini Vision A
 3. Các endpoint `/auth/*` theo `API.md`: giới hạn OTP (5 lần sai, 60s gửi lại, 5 phút hiệu lực), **lazy cleanup** OTP.
 4. Gộp dữ liệu khách khi `verify-otp`/`login` (SPEC 5.7) trong 1 transaction.
 5. Flutter: AuthView (Đăng ký, nhập OTP, Đăng nhập, Quên mật khẩu), `AuthProvider`, lưu JWT trong secure storage, interceptor tự gắn JWT và xử lý 401, nút Đăng xuất.
-6. Deploy backend lên Render: `render.yaml`/Start Command `gunicorn app:app --workers 1 --threads 4`, biến môi trường, `/health`. Kiểm tra `DATABASE_URL` có `sslmode=require`.
-7. Flutter: đặt `baseUrl` = URL Render (HTTPS). Ký APK (keystore, `key.properties` **không commit**), `minSdkVersion`, xác nhận quyền INTERNET trong manifest, rồi `flutter build apk --release --split-per-abi`.
+6. Deploy backend lên Render — **đã làm ở GĐ1.5**, phần còn lại là bổ sung biến môi trường `DATABASE_URL` (kiểm tra có `sslmode=require`), `ENCRYPTION_KEY`, `JWT_SECRET`, rồi chạy migrate trên DB Neon thật.
+7. Flutter: `baseUrl` đã lấy từ `--dart-define=BASE_URL` (GĐ1.5). Phần còn lại: ký APK bằng keystore chính thức (`key.properties` **không commit**), xác nhận quyền INTERNET trong manifest, `flutter build apk --release --split-per-abi`.
 8. Kiểm tra `/config` + `min_app_version` (426 khi app cũ).
 
 ### ✅ DoD Giai đoạn 4

@@ -82,7 +82,8 @@ Một chuỗi văn bản gồm: 1 đoạn tóm tắt duy nhất (không có bull
 
 ### 2.3. Hạ tầng
 - **DB:** Neon , chuỗi kết nối có `sslmode=require`. **Không** dùng Postgres miễn phí của Render (có thời hạn).
-- **API:** Render (HTTPS mặc định). Có `render.yaml` + `GET /health`.
+- **API:** Render (HTTPS mặc định). Có `render.yaml` (blueprint, `rootDir: backend`, `healthCheckPath: /health`) + `GET /health`.
+- **Bắt buộc khi sau proxy:** `ProxyFix(x_for=1, x_proto=1, x_host=1)` để `request.remote_addr` là IP thật, và mọi giới hạn chốt theo `X-Device-ID` (xem 5.5).
 - Local test: HTTPS qua Ngrok nếu cần.
 - **Render free ngủ khi rảnh → cold start 30–60s.** Dio `connectTimeout`/`receiveTimeout` ≥ 60s; nếu request > 8s chưa phản hồi, hiện "Đang đánh thức máy chủ...".
 
@@ -166,8 +167,9 @@ TextSummarizerAI/
 - TXT: thử UTF-8, nếu lỗi thử `utf-8-sig`, `cp1258`, `latin-1`.
 
 ### 5.3. OCR
-- Mặc định: ML Kit on-device (model Latin).
-- **Phải test ngay ở Giai đoạn 1 với ảnh tiếng Việt có dấu.** Nếu độ chính xác dấu kém → **Phương án B**: app gửi ảnh (nén, ≤ 4MB) tới `POST /api/v1/ocr` (Gemini Vision, prompt ở `PROMPTS.md`); khi đó mới thêm `ocr_service.py`. Không tự chuyển sang phương án B nếu chưa được người dùng đồng ý.
+- **Đã chốt (2026-11-07): Gemini Vision qua `POST /api/v1/ocr`** — app gửi ảnh (nén, ≤ 4MB, jpeg/png/webp) lên backend, backend dùng prompt trong `PROMPTS.md` và `ocr_service.py`. Không dùng ML Kit on-device vì script Latin sai dấu tiếng Việt nhiều.
+- Rate limit riêng 20 lượt/ngày/IP, không trừ quota tóm tắt; lỗi `FILE_TOO_LARGE` (413), `FILE_UNSUPPORTED`, `OCR_NO_TEXT`, `RATE_LIMITED` (429).
+- **Đã kiểm chứng (2026-11-09)** với `testdata/ocr_vi.jpg`: 200, 251 ký tự, 7,2s, dấu tiếng Việt chính xác toàn bộ.
 
 ### 5.4. Tạo Quiz (đã chốt)
 - **Nguồn:** văn bản gốc của bản tóm tắt (giải mã từ `original_text_enc`); bản tóm tắt làm ngữ cảnh phụ.
@@ -186,6 +188,7 @@ TextSummarizerAI/
 - Cách tính (chống bấm đúp/race): **đặt chỗ nguyên tử** trước khi gọi AI (SQL `INSERT ... ON CONFLICT DO UPDATE ... WHERE count < limit RETURNING`), nếu xử lý **thất bại** (lỗi validate sau đặt chỗ, lỗi hệ thống, `AI_UNAVAILABLE` của quiz) thì **hoàn lại** 1 lượt. Thành công (kể cả bằng fallback TF-IDF) thì giữ.
 - Hết quota: `QUOTA_EXCEEDED` (429) — *"Bạn đã dùng hết quota trong ngày. Vui lòng quay lại vào ngày mai."*
 - Lưu trong **bảng DB `usage_quota`** (không dùng bộ nhớ RAM). `Flask-Limiter` chỉ chống spam theo IP (ví dụ 30 request/phút/IP; auth endpoints chặt hơn: 5/phút/IP).
+- **Ngoại lệ tạm thời (2026-11-10, phục vụ deploy sớm trước GĐ2):** vì GĐ1 chưa có DB, `Flask-Limiter` được dùng luôn cho mức **20 tóm tắt/ngày** và **20 OCR/ngày**, với `key_func` lấy **`X-Device-ID`** (fallback IP khi header vắng) chứ không theo IP — đứng sau proxy Render thì mọi user chung một IP egress, key theo IP sẽ gộp toàn bộ người dùng thành một. Hai giới hạn `per day` này là **cửa sổ rolling 24h trong RAM**, không phải mốc nửa đêm +07, và **Reset khi server khởi động lại hoặc thức dậy sau cold start**. Sang GĐ2, `quota_service.py` + bảng `usage_quota` thay thế hoàn toàn (đặt chỗ nguyên tử, đúng múi giờ, không mất khi restart); `Flask-Limiter` khi đó quay về đúng vai trò chống spam phút.
 - Header `X-Device-ID` (UUID v4) bắt buộc với mọi endpoint nghiệp vụ; sai định dạng → `INVALID_DEVICE_ID`.
 
 ### 5.6. Fallback tóm tắt
@@ -279,7 +282,7 @@ Chuẩn bị trước, mỗi giai đoạn phải chạy qua bộ này:
 | `short_100.txt` | 100 ký tự | `TEXT_TOO_SHORT` |
 | `long_31000.txt` | 31.000 ký tự | `TEXT_TOO_LONG` |
 | `emoji.txt` | có emoji, ký tự đặc biệt (447 ký tự) | không crash, đếm đúng |
-| `mixed.txt` | trộn Anh–Việt | ngôn ngữ ưu thế |
+| `mixed.txt` | trộn Anh–Việt (291 ký tự, dưới ngưỡng 400) | `TEXT_TOO_SHORT`; phần "ngôn ngữ ưu thế" kiểm bằng unit test trong `test_validators.py` |
 | `sample.txt`, `sample.docx`, `sample_text.pdf` | file hợp lệ | trích xuất OK |
 | `scanned.pdf` | PDF ảnh scan | `PDF_SCANNED` |
 | `big_11mb.pdf` | > 10MB | `FILE_TOO_LARGE` |

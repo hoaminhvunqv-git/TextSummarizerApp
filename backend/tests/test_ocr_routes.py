@@ -220,7 +220,7 @@ class TestOcrEndpoint:
         assert result["error_code"] == "UPDATE_REQUIRED"
 
     def test_ocr_rate_limit(self, client):
-        """Vượt 20 lượt OCR/ngày/IP → 429 RATE_LIMITED (không gọi Gemini thật)."""
+        """Vượt 20 lượt OCR/ngày/thiết bị → 429 QUOTA_EXCEEDED (không gọi Gemini thật)."""
         from backend.extensions import limiter
 
         limiter.reset()
@@ -250,6 +250,6 @@ class TestOcrEndpoint:
         try:
             assert codes[:20] == [200] * 20
             assert overflow is not None, "Lượt thứ 21 phải bị chặn rate limit"
-            assert overflow.get_json()["error_code"] == "RATE_LIMITED"
+            assert overflow.get_json()["error_code"] == "QUOTA_EXCEEDED"
         finally:
             limiter.reset()

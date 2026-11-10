@@ -3,11 +3,15 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request
 
 try:
+    from backend.config import Config
+    from backend.extensions import limiter
     from backend.services.gemini_service import GeminiService
     from backend.utils.errors import AppError, ErrorCode
     from backend.utils.responses import success_response
     from backend.utils.validators import require_device_and_version, validate_summary_input
 except ImportError:
+    from config import Config
+    from extensions import limiter
     from services.gemini_service import GeminiService
     from utils.errors import AppError, ErrorCode
     from utils.responses import success_response
@@ -21,6 +25,7 @@ VN_TZ = timezone(timedelta(hours=7))
 
 @summary_bp.route("/api/v1/summaries", methods=["POST"])
 @require_device_and_version
+@limiter.limit(f"{Config.DAILY_SUMMARY_LIMIT} per day")
 def create_summary():
     """Tóm tắt văn bản. GĐ1 chưa lưu DB nên id = null, quota chưa theo dõi nên usage = null."""
     body = request.get_json(silent=True)
