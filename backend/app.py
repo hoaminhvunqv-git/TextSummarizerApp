@@ -24,6 +24,7 @@ try:
     from backend.routes.summary_routes import summary_bp
     from backend.routes.file_routes import file_bp
     from backend.routes.ocr_routes import ocr_bp
+    from backend.routes.usage_routes import usage_bp
 except ImportError:
     from config import Config
     from extensions import limiter
@@ -33,6 +34,7 @@ except ImportError:
     from routes.summary_routes import summary_bp
     from routes.file_routes import file_bp
     from routes.ocr_routes import ocr_bp
+    from routes.usage_routes import usage_bp
 
 # Cấu hình logging cơ bản (không log nội dung người dùng theo CLAUDE.md)
 logging.basicConfig(
@@ -74,6 +76,7 @@ def create_app(config_class=Config) -> Flask:
     app.register_blueprint(summary_bp)
     app.register_blueprint(file_bp)
     app.register_blueprint(ocr_bp)
+    app.register_blueprint(usage_bp)
 
     # Đăng ký Global Error Handlers
     @app.errorhandler(AppError)

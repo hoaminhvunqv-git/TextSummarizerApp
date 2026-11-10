@@ -72,8 +72,8 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 1. Tạo DB Neon/Supabase, `DATABASE_URL` (có `sslmode=require`) vào `.env`.
 2. `database/db.py` (ThreadedConnectionPool), `database/migrate.py`, chép `schema.sql` → `migrations/001_init.sql`, chạy migrate.
 3. `services/crypto_service.py` AES-256-GCM + `pytest` round-trip (nonce khác nhau mỗi lần, sai key → lỗi).
-4. `services/quota_service.py`: đặt chỗ nguyên tử + hoàn lại (SPEC 5.5), múi giờ `Asia/Ho_Chi_Minh`. `GET /usage`.
-5. Cập nhật `POST /summaries`: đặt chỗ quota → xử lý → lưu bản ghi mã hóa (`original_length`, `source`) → hoàn lại quota nếu lỗi.
+4. `services/quota_service.py`: đặt chỗ nguyên tử + hoàn lại (SPEC 5.5), ngày nghiệp vụ theo **offset cố định `+07:00`** (không dùng `ZoneInfo` vì Windows thiếu zone database, xem SPEC 5.5). `GET /usage`.
+5. Cập nhật `POST /summaries`: đặt chỗ quota → xử lý → lưu bản ghi mã hóa (`original_length`, `source`) → hoàn lại quota nếu lỗi. **Cùng bước này bỏ `@limiter.limit("20 per day")` trên route** (giữ 30 request/phút) để không có hai bộ đếm cùng chặn `/summaries`; `POST /ocr` vẫn dùng limiter của GĐ1.5 vì ràng buộc `usage_type` trong schema chỉ nhận `SUMMARY`/`QUIZ`.
 6. `GET /summaries` (phân trang), `GET /summaries/{id}`, `DELETE /summaries/{id}` — **có kiểm tra quyền sở hữu** (device/user), không thuộc → `NOT_FOUND`.
 7. Flutter: HistoryView (pull-to-refresh, empty state, xóa), SummaryDetailView, hiển thị lượt còn lại.
 

@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.3 xong (lớp DB + migration đã áp lên Neon, `crypto_service.py` AES-256-GCM đã test round-trip bằng key thật trong `.env`). Bước tiếp theo: 2.4 `services/quota_service.py` (đặt chỗ nguyên tử + hoàn lại, múi giờ `Asia/Ho_Chi_Minh`) và `GET /usage`.
+Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.4 xong (`quota_service.py` đã kiểm chứng nguyên tử thật trên Neon, `GET /api/v1/usage` đã có). Bước tiếp theo: **2.5** gắn `reserve()`/`refund()` + lưu bản ghi mã hóa vào `POST /summaries`, và bỏ `@limiter.limit("20 per day")` trên route trong cùng bước.
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -82,6 +82,10 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - Cách chạy test: `cd backend && .\.venv\Scripts\pytest tests/test_crypto.py -v` → **10 passed** (toàn bộ suite: **85 passed**).
   - Kết quả mong đợi đã kiểm bằng key thật trong `.env`: văn bản 66 ký tự → token base64 136 ký tự, giải mã đúng dấu tiếng Việt, hai lần mã hóa cùng văn bản cho hai chuỗi khác nhau, `ENCRYPTION_KEY` hiện hành decode ra đúng 32 byte.
   - Hành vi khi sai: key không 32 byte / không base64 / để trống → `ValueError` ngay khi khởi tạo; giải mã bằng key khác hoặc dữ liệu bị sửa → `InvalidTag`; token cụt (≤12 byte) → `ValueError`. Cả ba đều không rơi vào im lặng.
+- Bước 2.4 (2026-11-10): `backend/services/quota_service.py` (`owner_key`, `today_vn`/`resets_at` theo offset `+07:00` cố định, `reserve` nguyên tử, `refund`, `get_usage`) + `backend/routes/usage_routes.py` (`GET /api/v1/usage`, đăng ký trong `app.py`). **Chưa** gắn vào `POST /summaries` — việc đó ở 2.5 cùng lúc với bỏ `20 per day` limiter.
+  - Cách chạy test: `.\.venv\Scripts\pytest tests/test_quota_service.py tests/test_usage_routes.py -v` → **14 passed**; toàn suite **99 passed**.
+  - Cách kiểm thật trên Neon (dùng `owner_key` tạm rồi xóa): `reserve` lần 1 → count 1, `refund` → count 0, rồi 30 request song song (6 thread × 5) → **đúng 20 thành công, count trong DB = 20**, request 21 → `QUOTA_EXCEEDED`. Sau đó `DELETE` dòng test, `usage_quota` về 0 dòng.
+  - Lỗi vấp khi smoke: script in dòng cuối bằng biến giả `_try_raises` chưa định nghĩa → `NameError` làm chết script **trước** bước dọn DB, phải chạy lại riêng bước kiểm tra + `DELETE`. Kinh nghiệm: smoke script nhiều bước ghi DB thì đặt dọn dẹp trong `finally`.
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -199,6 +203,10 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
   ```bash
   cd backend
   .\.venv\Scripts\python database\migrate.py   # "Đã áp dụng: 002_xxx.sql" hoặc "Không có migration nào mới."
+  ```
+- Xem lượt còn lại của một thiết bị (cần backend đang chạy và `DATABASE_URL`):
+  ```bash
+  curl -s -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" -H "X-App-Version: 1.0.0" http://127.0.0.1:5000/api/v1/usage
   ```
 - Kiểm tra mã nguồn Flutter:
   ```bash

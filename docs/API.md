@@ -55,7 +55,7 @@ Request:
 { "text": "<400–30000 ký tự>", "length": "medium" }
 ```
 `length`: `short | medium | long`, mặc định `medium`.
-Giới hạn theo `X-Device-ID`: **20 lượt/ngày** (hết → 429 `QUOTA_EXCEEDED`) và 30 request/phút (→ 429 `RATE_LIMITED`). Ở GĐ1 hai con số này do Flask-Limiter giữ trong RAM với cửa sổ rolling 24h; sang GĐ2 chuyển sang bảng `usage_quota` (đúng mốc nửa đêm +07, đặt chỗ nguyên tử).
+Giới hạn theo `X-Device-ID`: **20 lượt/ngày** (hết → 429 `QUOTA_EXCEEDED`) và 30 request/phút (→ 429 `RATE_LIMITED`). Ở GĐ1 hai con số này do Flask-Limiter giữ trong RAM với cửa sổ rolling 24h; sang GĐ2 chuyển sang bảng `usage_quota` (đúng mốc nửa đêm +07, đặt chỗ nguyên tử). Trạng thái chuyển tiếp: từ bước 2.4 `GET /usage` đã đọc `usage_quota` thật, nhưng bản thân `POST /summaries` vẫn do Flask-Limiter chặn — hai bộ đếm không chạy đồng thời trên một endpoint, bước 2.5 mới chuyển giao.
 Độ dài bản tóm tắt = tỷ lệ số từ bản gốc (12% / 22% / 35%, kẹp trong 25–120 / 40–260 / 60–450 từ). Mốc `medium` cần bản gốc ≥ 1.000 ký tự, `long` cần ≥ 2.000 ký tự; chưa đạt thì trả `LENGTH_NOT_UNLOCKED`.
 
 Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
@@ -104,6 +104,7 @@ Ghi chú: OCR dùng Gemini Vision API, chịu giới hạn riêng (20 lượt/ng
             "quiz":    { "used": 0, "limit": 20, "remaining": 20 },
             "resets_at": "2026-11-04T00:00:00+07:00" } }
 ```
+Chủ thể là `d:<X-Device-ID>` (mãi tới GĐ4 mới có `u:<user_id>`); `used`/`remaining` đọc thật từ bảng `usage_quota`, `remaining` không bao giờ âm; `resets_at` là nửa đêm +07 kế tiếp. Thiếu `DATABASE_URL` → 500 `INTERNAL_ERROR` (endpoint không đoán số lượt).
 
 ### GET `/summaries?page=1&limit=20`
 `limit` mặc định 20, tối đa 50. Không trả `original_text`/`summary` đầy đủ.
