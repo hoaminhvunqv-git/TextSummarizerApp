@@ -205,6 +205,10 @@ TextSummarizerAI/
 - Danh tính người gọi: có JWT hợp lệ → `user_id`; ngược lại dùng `X-Device-ID`.
 - Bản ghi được phép truy cập khi `user_id = người gọi` **hoặc** (`user_id IS NULL` và `device_id = X-Device-ID`).
 - Không thuộc người gọi → trả `NOT_FOUND` (404), không tiết lộ sự tồn tại.
+- **Cách cài đặt (từ bước 2.6):** điều kiện sở hữu là một mẫu SQL duy nhất trong `history_service.py`
+  `(user_id = %s OR (user_id IS NULL AND device_id = %s))` và nằm **trong chính câu SELECT/DELETE**,
+  không kiểm tra bằng `if` sau khi đọc. Route không tự viết `WHERE` riêng, nên không thể quên bước kiểm tra.
+  Khi chưa có JWT, `user_id = NULL` làm vế đầu không bao giờ đúng — cùng một câu lệnh dùng được cho cả 4 giai đoạn.
 - **Gộp dữ liệu khi đăng nhập/đăng ký-xác thực:** nếu có `X-Device-ID`, chạy trong 1 transaction:
   ```sql
   UPDATE summaries      SET user_id = :uid WHERE device_id = :did AND user_id IS NULL;

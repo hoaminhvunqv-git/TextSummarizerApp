@@ -79,12 +79,13 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 
 ### ✅ DoD Giai đoạn 2
 - [x] Xem trực tiếp bảng `summaries` trên dashboard: các cột `*_enc` là chuỗi base64 khó đọc, không có plaintext. *(2026-11-10: `SELECT` bản ghi thật vừa ghi — 4 cột base64, giải mã bằng `ENCRYPTION_KEY` ra đúng nội dung, `original_length=1272`; dòng test đã xóa sau khi kiểm.)*
-- [ ] Tạo bản tóm tắt → xuất hiện trong lịch sử với nội dung giải mã đúng. *(chờ 2.6)*
-- [ ] Đổi `X-Device-ID` khác → **không** thấy/đọc được/xóa được bản ghi của device cũ (404). *(chờ 2.6)*
+- [x] Tạo bản tóm tắt → xuất hiện trong lịch sử với nội dung giải mã đúng. *(2026-11-10: `POST` → 201 `id=2` `source=gemini`; `GET /summaries` trả đúng `id` đó, `GET /summaries/2` giải mã ra `original_text` khớp độ dài bản gốc 1.272 ký tự và bản tóm tắt tiếng Việt có dấu.)*
+- [x] Đổi `X-Device-ID` khác → **không** thấy/đọc được/xóa được bản ghi của device cũ (404). *(2026-11-10: device B — `GET /summaries` total=0, `GET /summaries/2` → 404 `NOT_FOUND`, `DELETE /summaries/2` → 404 và `SELECT COUNT(*)` vẫn bằng 1.)*
 - [x] Gửi 21 lần → lần 21 trả `QUOTA_EXCEEDED`; request lỗi (ví dụ quá ngắn) **không** làm tăng số lượt; bấm 2 request song song không vượt quota. *(2026-11-10: 30 request song song trên Neon → đúng 20 thành công, count=20, lượt 21 `QUOTA_EXCEEDED` và không gọi AI; `TEXT_TOO_SHORT` không đổi count.)*
-- [ ] Xóa 1 bản tóm tắt → biến mất khỏi DB. *(chờ 2.6)*
+- [x] Xóa 1 bản tóm tắt → biến mất khỏi DB. *(2026-11-10: `DELETE /summaries/2` (đúng chủ) → 200 `{"deleted": true}`, `SELECT COUNT(*) WHERE id=2` = 0; xóa lại → 404.)*
 - [x] Log server không chứa nội dung văn bản. *(2026-11-10: log chỉ `length=1272 | time=10.55s | source`, handler 500 chỉ ghi tên exception.)*
-- [x] `pytest` (crypto, validators) xanh. *(2026-11-10: 109 passed, 1 deselected.)*
+- [x] `pytest` (crypto, validators) xanh. *(2026-11-10: 145 passed, 1 deselected.)*
+- Ghi chú: 7/7 DoD phía backend đã đạt từ bước 2.6. Còn **bước 7** (Flutter: HistoryView, SummaryDetailView, hiển thị lượt còn lại) mới khép Giai đoạn 2.
 
 ---
 

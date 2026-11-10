@@ -68,6 +68,35 @@ def validate_summary_input(text: Optional[str], length: Optional[str] = "medium"
     return normalized_text, selected_length
 
 
+def validate_pagination(page: Optional[str], limit: Optional[str]) -> Tuple[int, int]:
+    """Chuẩn hóa query params `page`/`limit` cho GET /summaries (API.md).
+
+    Mặc định trang 1, 20 mục/trang; `limit` tối đa 50 để một trang không kéo cả
+    bảng lịch sử về thiết bị. Tham số lạ hoặc ngoài khoảng -> VALIDATION_ERROR.
+    """
+    raw_page = (page if page is not None else "1").strip()
+    raw_limit = (limit if limit is not None else str(Config.HISTORY_PAGE_SIZE_DEFAULT)).strip()
+
+    try:
+        page_num = int(raw_page)
+        limit_num = int(raw_limit)
+    except ValueError:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            message="Tham số phân trang không hợp lệ (page và limit phải là số nguyên).",
+        )
+
+    if page_num < 1 or limit_num < 1 or limit_num > Config.HISTORY_PAGE_SIZE_MAX:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            message=(
+                f"page phải từ 1 trở lên và limit từ 1 đến {Config.HISTORY_PAGE_SIZE_MAX}."
+            ),
+        )
+
+    return page_num, limit_num
+
+
 def validate_device_id(device_id: Optional[str]) -> str:
     """Kiểm tra Header X-Device-ID: bắt buộc có và phải đúng chuẩn UUID v4 (SPEC 5.5)."""
     if not device_id or not isinstance(device_id, str):

@@ -113,12 +113,21 @@ Chủ thể là `d:<X-Device-ID>` (mãi tới GĐ4 mới có `u:<user_id>`); `us
   "data": { "items": [ { "id": 12, "title": "...", "description": "...", "language": "vi", "source": "gemini", "created_at": "..." } ],
             "page": 1, "limit": 20, "total": 37 } }
 ```
+Sắp xếp `created_at DESC, id DESC` (id break tie khi hai bản ghi cùng một giây). `total` là số bản ghi **của riêng người gọi**, không phải cả bảng; lịch sử trống → 200 với `items: []`, không phải 404. `page`/`limit` không phải số nguyên hoặc vượt khoảng → 400 `VALIDATION_ERROR`. Đọc lịch sử **không** trừ lượt tóm tắt.
 
 ### GET `/summaries/{id}`
-`data` = như response tạo summary + `original_text`.
+`data` = như response tạo summary + `original_text`:
+```json
+{ "success": true, "message": "Xử lý thành công",
+  "data": { "id": 12, "title": "...", "description": "...", "summary": "...",
+            "original_text": "...", "original_length": 1840, "language": "vi",
+            "source": "gemini", "created_at": "2026-11-03T09:30:00+07:00",
+            "usage": { "summary_remaining": 19, "quiz_remaining": 20 } } }
+```
+Bản ghi không thuộc người gọi (SPEC 5.7) hoặc id không dạng số → 404 `NOT_FOUND`, trả về y hệt nhau để không dò được id nào từng tồn tại. `original_length` là độ dài `original_text` đã NFC + strip, luôn bằng nhau khi giải mã lại.
 
 ### DELETE `/summaries/{id}`
-`data`: `{ "deleted": true }`.
+`data`: `{ "deleted": true }` (HTTP 200). Bản ghi của thiết bị/tài khoản khác → 404 `NOT_FOUND` và **không** bị xóa; `quiz_sessions` của bản ghi bị xóa theo nhờ `ON DELETE CASCADE`. Xóa lại lần hai → 404.
 
 ### POST `/summaries/{id}/quizzes`
 Request body rỗng `{}`. Lỗi: `QUIZ_TEXT_TOO_SHORT`, `QUOTA_EXCEEDED`, `AI_UNAVAILABLE`, `NOT_FOUND`.

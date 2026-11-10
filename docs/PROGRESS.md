@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.5 xong (`POST /summaries` đã trừ quota thật trong `usage_quota` và lưu bản ghi mã hóa, `@limiter.limit("20 per day")` đã bỏ). Bước tiếp theo: **2.6** `GET /summaries` (phân trang), `GET /summaries/{id}`, `DELETE /summaries/{id}` kèm kiểm tra quyền sở hữu — 3 dòng DoD GĐ2 còn lại nằm ở bước này.
+Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.6 xong, **7/7 DoD phía backend đã đạt**: lịch sử đọc/chi tiết/xóa có kiểm tra quyền sở hữu, quota và bản ghi mã hóa đều nằm trong `usage_quota`/`summaries`. Bước tiếp theo: **2.7** Flutter `HistoryView` (pull-to-refresh, empty state, xóa), `SummaryDetailView`, hiển thị lượt còn lại — đây là bước cuối của GĐ2.
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -91,6 +91,15 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - Cách chạy test: `.\.venv\Scripts\pytest tests/test_history_service.py tests/test_summary_routes.py -v` → **21 passed**; toàn suite **109 passed, 1 deselected**. Unit test không chạm Neon hay key thật: fixture `store` fake hoá `reserve/refund/get_usage/save_summary`, test mã hóa dùng key tự sinh trong fixture.
   - Kết quả thật trên Neon + Gemini (1 request, key thật): `201 | id: 1 | source: gemini`, `usage: {'summary_remaining': 19, 'quiz_remaining': 20}`, 4 cột `*_enc` đều là base64 và **không** chứa plaintext, giải mã ra đúng văn bản gốc; `created_at` API trả `2026-11-10T19:07:47+07:00` trong khi DB giữ `2026-11-10 12:07:47.539579+00:00` — cùng một thời điểm, chỉ khác cách hiển thị. Request sai (`short_100`) → `400 TEXT_TOO_SHORT` và bộ đếm **vẫn 1** (chưa đặt chỗ), xác nhận thứ tự validate trước quota. Script dọn xong: `summaries` 0 dòng, `usage_quota` 0 dòng.
   - Test chống hồi quy đã thêm: `test_day_limiter_removed_from_summaries` (25 request vẫn 201 khi chỉ còn limiter phút), `test_quota_is_booked_before_calling_ai`, `test_gemini_failure_refunds_the_slot`, `test_save_failure_refunds_the_slot`, `test_summary_persists_for_the_calling_device`.
+- Bước 2.6 (2026-11-10): ba route lịch sử trong `backend/routes/summary_routes.py` — `GET /api/v1/summaries?page=&limit=`, `GET /api/v1/summaries/<id>`, `DELETE /api/v1/summaries/<id>` — cùng `list_summaries/get_summary/delete_summary` trong `backend/services/history_service.py` và `validate_pagination` trong `utils/validators.py` (`Config.HISTORY_PAGE_SIZE_DEFAULT=20`, `HISTORY_PAGE_SIZE_MAX=50`). **DoD GĐ2 phía backend khép lại ở bước này.**
+  - Quyền sở hữu (SPEC 5.7) nằm trong chính câu SQL, một mẫu duy nhất `OWNER_MATCH_SQL = "(user_id = %s OR (user_id IS NULL AND device_id = %s))"` dùng cho cả SELECT trang / SELECT chi tiết / DELETE, nên "không tồn tại" và "của người khác" trả giống hệt nhau (404 `NOT_FOUND`).
+  - Cách chạy test: `.\.venv\Scripts\pytest tests/test_history_service.py tests/test_history_routes.py -v` → **40 passed**; toàn suite **145 passed, 1 deselected**. `test_history_routes.py` dùng bảng in-memory mô lại quy tắc 5.7 nên việc chặn device khác được kiểm thật, không phải giả vờ.
+  - Kết quả thật trên Neon + Gemini (server 5000, 11 bước, có `finally` dọn DB): `POST` → 201 `id=2 source=gemini` → `GET /summaries` (A) `total=1`, `item[0].title` tiếng Việt có dấu → `GET /summaries/2` (A) 200, `original_text` giải mã đúng, `original_length == len(original_text)`, `usage={summary_remaining:19, quiz_remaining:20}` → device B: `total=0`, `GET /summaries/2` **404**, `DELETE /summaries/2` **404 và dòng vẫn còn 1** → `?page=2&limit=2` `total=4 ids=[3,2]` (mới nhất trước) → `?limit=51` 400 `VALIDATION_ERROR` → `/summaries/khong-phai-so` 404 JSON → `DELETE` đúng chủ 200 `{"deleted": true}` và `COUNT(*)=0` → xóa lại 404. Cột `*_enc` không chứa plaintext; log server 23 dòng, không có đoạn văn bản nào.
+  - Cách gọi nhanh:
+    ```bash
+    curl -s -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" -H "X-App-Version: 1.0.0" "http://127.0.0.1:5000/api/v1/summaries?page=1&limit=20"
+    curl -s -X DELETE -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" -H "X-App-Version: 1.0.0" http://127.0.0.1:5000/api/v1/summaries/2
+    ```
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -175,6 +184,9 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Tách test gọi Gemini API thật sang marker `live` trong `pytest.ini` và mặc định loại trừ (`addopts = -m "not live"`) để `pytest` thường không tốn quota và chạy nhanh (75s → 2.2s).
 - Giữ trường `usage` trong response GĐ1 với giá trị `null` (không bỏ, không trả hằng 20/20): cùng nguyên tắc "định nghĩa đủ cấu trúc, phần chưa dùng để NULL" như `schema.sql` làm với `user_id`, và giống cách `API.md` đã quy định `id = null` ở GĐ1. Sang GĐ2 chỉ điền giá trị, không phải sửa model Dart hay UI.
 - `created_at` dùng `timezone(timedelta(hours=7))` thay vì `ZoneInfo("Asia/Ho_Chi_Minh")`: Việt Nam không có DST nên kết quả y hệt, tránh phải thêm package `tzdata` trên Windows (ngoài danh sách SPEC 2.2).
+- Kiểm tra quyền sở hữu viết **trong câu SQL** (`WHERE id = %s AND (user_id = %s OR (user_id IS NULL AND device_id = %s))`) thay vì đọc về rồi `if`: một lần đọc một lần xét, không route nào có thể quên bước kiểm tra, và `DELETE` cũng dùng đúng mẫu đó. Cùng một câu lệnh hợp lệ cho cả 4 giai đoạn — khi chưa có JWT thì `user_id = NULL` không bao giờ đúng.
+- Route dùng converter `<int:summary_id>`: id không phải số bị Flask chặn trước khi tới service, và handler `HTTPException` 404 có sẵn trong `app.py` biến nó thành JSON `NOT_FOUND` — không cần tự parse, không lộ trang HTML lỗi của Flask.
+- Trang `GET /summaries` **không** SELECT `summary_enc`/`original_text_enc`: mỗi bản ghi tiết kiệm một lần giải mã AES và một lần truyền văn bản đầy đủ, đúng quy định API.md là danh sách chỉ hiện title + description.
 - Đặt `limiter` trong `extensions.py` thay vì `app.py` để routes import được, tránh import vòng.
 - Đổi model mặc định sang `gemini-3.5-flash`. Kiểm tra qua `models.list()` ngày 2026-11-07: `gemini-2.5-flash` (default cũ) đã bị khai tử, trả **404 NOT_FOUND**; `gemini-3.7-flash` và `gemini-3.8-flash` trả 504 hoặc rất chậm (prompt "Say OK" mất 38s); `gemini-3.5-flash` phản hồi 2.8s, `gemini-3.1-flash-lite` 1.1s.
 - PDF hỏng hoặc bị mã hóa → trả `PDF_SCANNED` (không có mã lỗi riêng trong API.md; message *"Không thể đọc văn bản từ file này. Hãy dùng tính năng Quét ảnh OCR."* vẫn đúng với người dùng).
@@ -207,7 +219,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -q            # 109 tests, không gọi API thật, không cần DATABASE_URL
+  .\.venv\Scripts\pytest -q            # 145 tests, không gọi API thật, không cần DATABASE_URL
   .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
   ```
 - Áp migration lên DB thật (chạy khi mới tạo DB hoặc mỗi lần thêm file trong `database/migrations/`):

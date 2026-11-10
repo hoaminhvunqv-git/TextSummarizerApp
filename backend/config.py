@@ -47,6 +47,10 @@ class Config:
     DAILY_SUMMARY_LIMIT = 20
     DAILY_QUIZ_LIMIT = 20
 
+    # Phân trang lịch sử (docs/API.md: GET /summaries?page=&limit=).
+    HISTORY_PAGE_SIZE_DEFAULT = 20
+    HISTORY_PAGE_SIZE_MAX = 50
+
     # Ngưỡng số ký tự tối thiểu của bản gốc để mở khoá từng mốc tóm tắt (SPEC 5.1).
     # Derivation: ~120 ký tự/câu -> Ngắn >= 3 câu, Vừa >= 8 câu, Dài >= 15 câu.
     LENGTH_UNLOCK_CHARS = {
