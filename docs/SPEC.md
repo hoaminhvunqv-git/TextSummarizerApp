@@ -181,11 +181,16 @@ TextSummarizerAI/
 - Backend **kiểm tra** JSON Gemini trả về (đủ N câu, mỗi câu 4 đáp án không trùng, `correct_index` 0–3), **xáo trộn đáp án** và tính lại `correct_index` (Gemini hay đặt đáp án đúng ở vị trí cố định). JSON hỏng/thiếu: retry 1 lần, vẫn lỗi → `AI_UNAVAILABLE`.
 - **Tham số gọi quiz (GĐ3.2):** `temperature=0.7` và timeout riêng `GEMINI_QUIZ_TIMEOUT_SECONDS=30` — không dùng 15s của tóm tắt vì đo thật ngày 2026-11-10, bản 2.500 ký tự sinh 10 câu hết 28,8s. `usage_type` QUIZ đã có sẵn trong schema nên không cần migration.
 - Một bản tóm tắt có thể tạo nhiều quiz (mỗi lần tốn 1 lượt quiz).
+- **Lưu (từ bước 3.3):** `quiz_service.save_quiz()` ghi một dòng `quiz_sessions` rồi N dòng `quiz_questions`
+  trong **cùng một transaction**, `position` đánh từ 1; `options_enc` là `json.dumps` mảng 4 đáp án (giữ dấu tiếng Việt,
+  không escape `\u`) rồi mới mã hóa. Hoặc đủ cả quiz, hoặc không có gì — DB không bao giờ giữ quiz thiếu câu.
+  Thứ tự chặn trong route là *chủ sở hữu → `original_length` ≥ 400 → đặt chỗ QUIZ → gọi AI → lưu*; AI lỗi hoặc DB lỗi thì hoàn đúng một lượt.
 - API trả luôn `correct_index` và `explanation` (ứng dụng tự học, hiển thị đáp án ngay sau khi chọn). Khi nộp bài, backend **tính lại điểm** từ đáp án người dùng.
 - **Điểm:** thang 10, làm tròn 1 chữ số: `score = correct / total * 10`.
 
 ### 5.5. Quota & định danh
 - **20 tóm tắt/ngày** và **20 quiz/ngày** cho mỗi chủ thể.
+- **Hai con số này là trần phía người dùng, không phải năng lực phía server.** Key Gemini free tier chỉ 20 request/ngày cho một model, **cộng chung** tóm tắt + quiz + OCR (429 đo thật 2026-11-10: `generate_content_free_tier_requests, limit: 20`), và mỗi lần quiz retry tốn thêm 1, nghĩa là một mình `/summaries` cũng đủ làm key cạn trước khi hết quota của bất kỳ ai. Khi bật billing thì trần này tăng theo cấp paid; `usage_quota` vẫn là chỗ duy nhất chặn theo chủ thể.
 - Chủ thể (`owner_key`): người đã đăng nhập → `u:<user_id>`; khách → `d:<device_id>`.
 - Ngày tính theo múi giờ **Asia/Ho_Chi_Minh**, hiện thực bằng **offset cố định `+07:00`** (`timezone(timedelta(hours=7))`), không dùng `ZoneInfo`: Windows không có hệ thống zone database nên `ZoneInfo("Asia/Ho_Chi_Minh")` fail tới khi cài thêm `tzdata`, còn Render (Linux) lại chạy được — lệch môi trường như vậy dễ gây "test local hỏng, production đúng" và ngược lại. Việt Nam không có DST từ 1977 nên offset cố định cho ra cùng một mốc nửa đêm. Nếu sau này cần múi giờ theo từng người dùng thì chỉ đổi hằng số `VN_TZ` thành `ZoneInfo(user_tz)`.
 - Cách tính (chống bấm đúp/race): **đặt chỗ nguyên tử** trước khi gọi AI (SQL `INSERT ... ON CONFLICT DO UPDATE ... WHERE count < limit RETURNING`), nếu xử lý **thất bại** (lỗi validate sau đặt chỗ, lỗi hệ thống, `AI_UNAVAILABLE` của quiz) thì **hoàn lại** 1 lượt. Thành công (kể cả bằng fallback TF-IDF) thì giữ.
@@ -210,6 +215,17 @@ TextSummarizerAI/
   `(user_id = %s OR (user_id IS NULL AND device_id = %s))` và nằm **trong chính câu SELECT/DELETE**,
   không kiểm tra bằng `if` sau khi đọc. Route không tự viết `WHERE` riêng, nên không thể quên bước kiểm tra.
   Khi chưa có JWT, `user_id = NULL` làm vế đầu không bao giờ đúng — cùng một câu lệnh dùng được cho cả 4 giai đoạn.
+- **Quiz kiểm sở hữu qua bản tóm tắt cha (từ bước 3.3):** mọi câu đọc `quiz_sessions` đều
+  `JOIN summaries s ON s.id = qs.summary_id` rồi áp cùng mẫu điều kiện cho `s.`
+  (`(s.user_id = %s OR (s.user_id IS NULL AND s.device_id = %s))`), không lọc theo `qs.user_id`.
+  Lý do: GĐ4 gộp khách vào tài khoản chỉ sửa `summaries.user_id`, còn `quiz_sessions.user_id` của bản ghi cũ
+  vẫn `NULL` — nếu quiz tự kiểm tra cột của nó thì dữ liệu cũ "biến mất" khỏi mắt người dùng ngay sau khi đăng nhập.
+  Cách này cũng khớp ý nghĩa của API: người xem được bản tóm tắt thì xem được quiz của nó.
+  `list_quizzes` chạy thêm một câu `SELECT 1 FROM summaries s WHERE s.id = %s AND …` **trước** khi liệt kê,
+  để id của người khác trả 404 chứ không phải danh sách rỗng.
+  Ràng buộc mới này có một mặt trái phải nhớ: **mẫu điều kiện mang alias `s.`**, nên mọi câu dùng nó phải tự khai báo
+  `summaries s`; PostgreSQL báo `missing FROM-clause entry for table "s"` mà cursor giả trong unit test không phát hiện được
+  (đúng lỗi mà smoke Neon ngày 2026-11-10 bắt ra) — `tests/test_quiz_service.py` có test kiểm tra alias tĩnh để không tái phạm.
 - **Gộp dữ liệu khi đăng nhập/đăng ký-xác thực:** nếu có `X-Device-ID`, chạy trong 1 transaction:
   ```sql
   UPDATE summaries      SET user_id = :uid WHERE device_id = :did AND user_id IS NULL;

@@ -146,6 +146,26 @@ Request body rỗng `{}`. Lỗi: `QUIZ_TEXT_TOO_SHORT`, `QUOTA_EXCEEDED`, `AI_UN
     "usage": { "summary_remaining": 19, "quiz_remaining": 19 }
   } }
 ```
+`question_count = clamp(floor(char_count / 130), 3, 10)` tính trên `original_length` của bản tóm tắt (SPEC 5.4), nên văn bản 500 ký tự cho 3 câu và ≥ 1300 ký tự cho 10 câu. `position` đánh từ **1**, `correct_index` là vị trí **đã xáo trộn** (0–3) nên đáp án đúng không luôn nằm ở đầu. Một quiz và toàn bộ câu hỏi của nó được ghi trong **một transaction**: không tồn tại trạng thái quiz thiếu câu. Thứ tự chặn của server là *chủ sở hữu → độ dài → đặt chỗ QUIZ → gọi AI → lưu DB*, vì vậy bản tóm tắt của thiết bị khác (404) và văn bản quá ngắn (400 `QUIZ_TEXT_TOO_SHORT`) **không** trừ lượt; lỗi AI hoặc lỗi ghi DB được hoàn lại đúng một lượt.
+
+### GET `/summaries/{id}/quizzes`
+```json
+{ "success": true, "message": "Xử lý thành công",
+  "data": { "summary_id": 12,
+            "items": [ { "id": 5, "summary_id": 12, "question_count": 5, "language": "vi", "created_at": "2026-11-10T09:30:00+07:00" } ],
+            "total": 1 } }
+```
+Mọi quiz từng tạo từ một bản tóm tắt, mới nhất trước (`created_at DESC, id DESC`). Trang này **không** kèm `questions`: thiết bị mở quiz nào thì gọi `GET /quizzes/{id}` để tránh giải mã hàng loạt. Chưa có quiz → 200 với `items: []`; bản tóm tắt không thuộc người gọi → 404 `NOT_FOUND` (kiểm quyền sở hữu ngay trong câu SELECT, không phải lọc sau khi đọc). Đọc danh sách **không** trừ lượt.
+
+### GET `/quizzes/{id}`
+`data` giống hệt response tạo quiz nhưng **không có** `usage`:
+```json
+{ "success": true, "message": "Xử lý thành công",
+  "data": { "id": 5, "summary_id": 12, "question_count": 5, "language": "vi",
+            "created_at": "2026-11-10T09:30:00+07:00",
+            "questions": [ { "id": 31, "position": 1, "question": "...", "options": ["...", "...", "...", "..."], "correct_index": 0, "explanation": "..." } ] } }
+```
+Câu hỏi trả về theo `position` tăng dần và kèm `correct_index` + `explanation` (thiết bị tự chấm từng câu ngay khi chọn — SPEC 5.4). Quiz của thiết bị khác hoặc id không tồn tại → 404 `NOT_FOUND` với cùng một thông điệp "Không tìm thấy quiz này."; id không phải số cũng 404.
 
 ### POST `/quizzes/{id}/attempts`
 Request (mảng độ dài = `question_count`, `null` = bỏ qua):
