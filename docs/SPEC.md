@@ -251,6 +251,8 @@ Xem `schema.sql` (đã gồm index, `ON DELETE CASCADE`, check constraint). Đi�
 
 Migration: file đánh số trong `backend/database/migrations/`; `migrate.py` áp dụng file chưa chạy và ghi vào `schema_migrations`. **Không sửa DB bằng tay.**
 
+`database/db.py` tạo `ThreadedConnectionPool` **lười** (ở lần mượn connection đầu tiên): backend phải boot được khi thiếu `DATABASE_URL` để dừng ở giai đoạn nào cũng còn deploy được (xem `PHASES.md` GĐ1.5). Route cần DB mà chưa cấu hình sẽ fail rõ ràng, không im lặng trả dữ liệu rỗng.
+
 ---
 
 ## 7. API

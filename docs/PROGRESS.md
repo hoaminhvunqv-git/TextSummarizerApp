@@ -3,7 +3,7 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 1.5 (deploy sớm) — code phía tôi đã xong và `pytest` xanh (2026-11-10); còn lại là thao tác tay của người dùng: tạo Web Service Render + điền `GEMINI_API_KEY`, rồi build APK với `--dart-define=BASE_URL`.
+Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.3 xong (lớp DB + migration đã áp lên Neon, `crypto_service.py` AES-256-GCM đã test round-trip bằng key thật trong `.env`). Bước tiếp theo: 2.4 `services/quota_service.py` (đặt chỗ nguyên tử + hoàn lại, múi giờ `Asia/Ho_Chi_Minh`) và `GET /usage`.
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -74,6 +74,14 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - `flutter analyze` đạt 100% không lỗi.
 - Bước 1C.3 + 1C.5 (2026-11-09): Kiểm thử OCR tiếng Việt qua Gemini Vision (`ocr_vi.jpg` → 200, dấu đúng, 7,2s) và chạy lại toàn bộ DoD GĐ1 phía backend bằng curl trên venv Python 3.13 — `source=gemini` chạy thật, format 1 đoạn văn, khoá mốc `LENGTH_NOT_UNLOCKED`, fallback `source=tfidf`, extract file và chống injection đều đạt. Chi tiết ở mục "Kết quả kiểm thử DoD GĐ1".
 - Bước 1.5.1–1.5.2 (2026-11-10, code): `ProxyFix` + `Flask-Limiter` khóa theo `X-Device-ID` + `20 per day` cho `POST /summaries`, 429 scope `day` → `QUOTA_EXCEEDED`; `render.yaml`, `gunicorn` trong requirements; `BASE_URL` qua `--dart-define`; `usesCleartextTraffic` `false` (release) / `true` (debug). `pytest` 71 passed, `flutter analyze` sạch.
+- Bước 2.1–2.2 (2026-11-10): `psycopg2-binary>=2.9.9` vào requirements; `backend/database/db.py` (`ThreadedConnectionPool` 1–8, `db_configured()`, `connection()`, `transaction()`, `close_pool()`, **khởi tạo lười**); `backend/database/migrate.py` (đọc `migrations/*.sql`, so với ledger `schema_migrations`, mỗi file một transaction).
+  - Cách chạy: `cd backend && ./.venv/Scripts/python database/migrate.py` → lần đầu in `Đã áp dụng: 001_init.sql`, chạy lại in `Không có migration nào mới.`
+  - Cách test: `./.venv/Scripts/python -m pytest tests/test_db.py -q` (4 test) và `pytest -q` toàn bộ → **75 passed**.
+  - Kết quả thật trên Neon: 8 bảng khớp `schema.sql` (bạn từng dán tay ở Bước 0), ledger rỗng → migrate chỉ ghi ledger, không đổi lược đồ, 0 dòng dữ liệu bị ảnh hưởng. `SELECT 1` qua `db.transaction()` OK.
+- Bước 2.3 (2026-11-10): `backend/services/crypto_service.py` — `CryptoService(key_bytes)` + `CryptoService.from_b64_key(...)`, AES-256-GCM, nonce `os.urandom(12)` mỗi lần, token lưu dạng `base64(nonce+ciphertext_with_tag)`; `cryptography>=42.0.0` vào `requirements.txt` (bản cài thật 50.0.2).
+  - Cách chạy test: `cd backend && .\.venv\Scripts\pytest tests/test_crypto.py -v` → **10 passed** (toàn bộ suite: **85 passed**).
+  - Kết quả mong đợi đã kiểm bằng key thật trong `.env`: văn bản 66 ký tự → token base64 136 ký tự, giải mã đúng dấu tiếng Việt, hai lần mã hóa cùng văn bản cho hai chuỗi khác nhau, `ENCRYPTION_KEY` hiện hành decode ra đúng 32 byte.
+  - Hành vi khi sai: key không 32 byte / không base64 / để trống → `ValueError` ngay khi khởi tạo; giải mã bằng key khác hoặc dữ liệu bị sửa → `InvalidTag`; token cụt (≤12 byte) → `ValueError`. Cả ba đều không rơi vào im lặng.
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -103,6 +111,10 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
   - Hệ quả: `extensions.py` thêm `get_rate_limit_key()` (device → fallback IP) và `storage_uri=Config.RATELIMIT_STORAGE_URI`; `POST /summaries` gắn `@limiter.limit(f"{Config.DAILY_SUMMARY_LIMIT} per day")`; OCR giữ `20 per day` nhưng giờ tính theo device.
   - **Khác biệt có ý thức với SPEC 5.5** (đã ghi lại vào SPEC): cửa sổ rolling 24h chứ không phải nửa đêm +07, và bộ đếm nằm trong RAM nên Reset khi restart/cold start. GĐ2 thay bằng `usage_quota` + đặt chỗ nguyên tử.
 - **429 chia làm hai thông điệp:** giới hạn scope `day` trả `QUOTA_EXCEEDED` ("hết quota trong ngày"), scope `minute` trả `RATE_LIMITED` ("thao tác quá nhanh"). `app.py` đọc `err.limit.limit.GRANULARITY.name` để phân biệt. Test `test_ocr_rate_limit` đổi kỳ vọng sang `QUOTA_EXCEEDED`.
+- **Lớp DB khởi tạo lười để giữ bất biến "dừng ở giai đoạn nào cũng deploy được"** (user chốt 2026-11-10): `database/db.py` chỉ mở `ThreadedConnectionPool` ở lần `getconn()` đầu tiên, mọi chỗ khác đọc `DATABASE_URL` với default rỗng.
+  - Hệ quả kiểm chứng được: xóa/để trống `DATABASE_URL` thì `create_app()` vẫn boot, `/health` và `/api/v1/config` vẫn 200 — test `test_backend_boots_without_database_url`.
+  - Route nào cần DB mà chưa cấu hình sẽ nhận `RuntimeError` → handler 500 `INTERNAL_ERROR`; không có đường im lặng trả dữ liệu rỗng.
+  - `migrate.py` vẫn yêu cầu `DATABASE_URL` và báo thẳng "Thiếu DATABASE_URL trong backend/.env" (exit 1) vì migration là thao tác một lần, không ảnh hưởng boot.
 - **Chưa làm (cố ý, để GĐ4):** ký keystore chính thức — APK release hiện ký debug key, cài được nhưng không phải bản phát hành lâu dài; `build.gradle.kts` chưa đọc `key.properties`.
 
 ## Thay đổi thiết kế (2026-11-09)
@@ -168,6 +180,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - **[ĐÃ XỬ LÝ 2026-11-09] `POST /api/v1/ocr` trả 404 khi gọi qua HTTP thật** (curl, requests) dù `app.url_map` có rule và `app.test_client()` gọi được. Nguyên nhân: tiến trình Flask cũ khởi động từ môi trường Python 3.15 (nơi `google.genai` không nạp được) vẫn giữ cổng 5000, request đi vào code cũ không có blueprint OCR. Sau khi thay venv bằng Python 3.13 và khởi động lại server: `POST /api/v1/ocr` với ảnh `.gif` → **400 `FILE_UNSUPPORTED`** (đã vào tới validate, chưa gọi Gemini, không tốn quota). Đã dọn xong artifact debug (`/test-ocr`, `print` trong `create_app`, log trong `ocr_routes.py`); `@require_device_and_version` và `@limiter.limit("20 per day")` đã trở lại.
 - Gemini thỉnh thoảng trả 503/504 tạm thời: trong lúc test, `vi_500` bị 503 hai lần liên tiếp nên fallback tfidf, gọi lại ngay sau đó thì 200 `source=gemini`. Fallback hoạt động đúng SPEC 5.6, nhưng cần chạy lại vài lần khi đối chiếu DoD `source=gemini`, đừng kết luận sai là lỗi code.
 - Model Gemini 3.x mặc định bật "thinking" nên dễ chậm; chưa thêm `thinking_config` vì `gemini-3.5-flash` đã đủ nhanh (~8–12s cho văn bản 250–500 ký tự). Nếu sau này gặp văn bản 30.000 ký tự vượt timeout 15s thì cân nhắc lại.
+- **Console Windows (cp1252) không in được tiếng Việt có dấu** → `UnicodeEncodeError` khi chạy `python -c`/heredoc in kết quả ra màn hình, kể cả khi code đúng. Không phải lỗi mã hóa hay lỗi Flask. Cách tránh: đặt `$env:PYTHONIOENCODING = "utf-8"` (PowerShell) hoặc `PYTHONIOENCODING=utf-8 python ...` (Git Bash) trước khi chạy; `migrate.py` đã tự ép `stdout` sang UTF-8 nên lệnh của nó không cần biến này.
 
 ## Cách chạy và test hiện tại
 - Chạy backend:
@@ -179,8 +192,13 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -v          # 22 tests, không gọi API thật
+  .\.venv\Scripts\pytest -q            # 75 tests, không gọi API thật, không cần DATABASE_URL
   .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
+  ```
+- Áp migration lên DB thật (chạy khi mới tạo DB hoặc mỗi lần thêm file trong `database/migrations/`):
+  ```bash
+  cd backend
+  .\.venv\Scripts\python database\migrate.py   # "Đã áp dụng: 002_xxx.sql" hoặc "Không có migration nào mới."
   ```
 - Kiểm tra mã nguồn Flutter:
   ```bash
