@@ -24,6 +24,9 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
     GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", 15))
+    # Quiz chậm hơn tóm tắt hẳn một bậc: đo thật 2026-11-10, 3 câu mất 17-24s nên
+    # 15s của tóm tắt sẽ luôn cắt ngang. 30s vẫn dưới receiveTimeout 60s của app.
+    GEMINI_QUIZ_TIMEOUT_SECONDS = int(os.getenv("GEMINI_QUIZ_TIMEOUT_SECONDS", 30))
     GEMINI_MAX_RETRY = int(os.getenv("GEMINI_MAX_RETRY", 1))
 
     # Security

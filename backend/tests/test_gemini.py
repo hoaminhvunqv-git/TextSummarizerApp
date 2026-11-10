@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -7,11 +8,15 @@ import pytest
 try:
     from backend.config import Config
     from backend.services import gemini_service
-    from backend.services.gemini_service import GeminiService
+    from backend.services.gemini_service import GeminiService, normalize_quiz_questions
+    from backend.utils.errors import AppError, ErrorCode
+    from backend.utils.text_utils import count_characters
 except ImportError:
     from config import Config
     from services import gemini_service
-    from services.gemini_service import GeminiService
+    from services.gemini_service import GeminiService, normalize_quiz_questions
+    from utils.errors import AppError, ErrorCode
+    from utils.text_utils import count_characters
 
 TESTDATA_DIR = Path(__file__).resolve().parent.parent.parent / "testdata"
 
@@ -190,3 +195,207 @@ def test_gemini_live_call_and_injection_defense():
     result_vi = GeminiService.summarize(vi_text, length="medium")
     assert result_vi["source"] in ("gemini", "tfidf")
     assert result_vi["language"] == "vi"
+
+
+# ---------------------------------------------------------------- Quiz (GĐ3.2)
+# PROMPTS.md mục 2: backend tự kiểm JSON, cắt còn N, xáo trộn đáp án, retry 1 lần,
+# hết lượt vẫn hỏng -> AI_UNAVAILABLE (quiz KHÔNG có fallback TF-IDF).
+
+QUIZ_OPTION_LABELS = ("loan", "chum", "nom", "phach")
+
+
+def quiz_payload(count: int, correct_index: int = 0) -> dict:
+    """JSON giả dạng đúng schema quiz; đáp án đúng luôn ở vị trí `correct_index`."""
+    return {
+        "questions": [
+            {
+                "question": f"Cau hoi {i}?",
+                "options": [f"{label} {i}" for label in QUIZ_OPTION_LABELS],
+                "correct_index": correct_index,
+                "explanation": f"Vi cau {i}.",
+            }
+            for i in range(1, count + 1)
+        ]
+    }
+
+
+def quiz_correct_option(index: int, correct_index: int) -> str:
+    return f"{QUIZ_OPTION_LABELS[correct_index]} {index}"
+
+
+def test_quiz_cat_con_dung_n_cau_khi_gemini_tra_du():
+    questions = normalize_quiz_questions(quiz_payload(12)["questions"], 5)
+    assert len(questions) == 5
+    assert [q["question"] for q in questions] == [f"Cau hoi {i}?" for i in range(1, 6)]
+
+
+def test_quiz_loai_tung_cau_lloi_khong_lam_hoi_ca_phan_hoi():
+    valid = quiz_payload(1)["questions"][0]
+    invalid = [
+        {"question": "Thieu dap an?", "options": ["a", "b", "c"], "correct_index": 0, "explanation": "x"},
+        {"question": "Trung dap an?", "options": ["A", "a", "b", "c"], "correct_index": 0, "explanation": "x"},
+        {"question": "Dap an rong?", "options": ["a", "b", "c", "  "], "correct_index": 0, "explanation": "x"},
+        {"question": "Rong phan giai thich?", "options": ["a", "b", "c", "d"], "correct_index": 0, "explanation": " "},
+        {"question": "Index ngoai 0-3?", "options": ["a", "b", "c", "d"], "correct_index": 4, "explanation": "x"},
+        {"question": "Index kieu boolean?", "options": ["a", "b", "c", "d"], "correct_index": True, "explanation": "x"},
+        {"question": "Index khong phai so?", "options": ["a", "b", "c", "d"], "correct_index": "0", "explanation": "x"},
+        {"question": "Thieu truong?", "options": ["a", "b", "c", "d"]},
+        "khong phai object",
+    ]
+    questions = normalize_quiz_questions(invalid + [dict(valid) for _ in range(3)], 10)
+    assert len(questions) == 3
+    assert all(q["question"] == "Cau hoi 1?" for q in questions)
+
+
+def test_quiz_duoi_ba_cau_hop_le_thi_bai_bo():
+    with pytest.raises(ValueError) as excinfo:
+        normalize_quiz_questions(quiz_payload(2)["questions"], 10)
+    assert "câu hợp lệ" in str(excinfo.value)
+    assert "Cau hoi" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("raw", [None, "van ban", {"questions": []}, 42])
+def test_quiz_khong_co_mang_questions_thi_bai_bo(raw):
+    with pytest.raises(ValueError):
+        normalize_quiz_questions(raw, 5)
+
+
+def test_quiz_xao_tron_dap_an_va_tinh_lai_correct_index():
+    """Đáp án đúng phải vẫn là đáp án đúng sau shuffle, và vị trí không cố định."""
+    seen_positions = set()
+    for _ in range(200):
+        questions = normalize_quiz_questions(quiz_payload(4, correct_index=0)["questions"], 4)
+        for i, question in enumerate(questions, start=1):
+            assert question["options"][question["correct_index"]] == quiz_correct_option(i, 0)
+            assert len(set(option.lower() for option in question["options"])) == 4
+            seen_positions.add(question["correct_index"])
+    assert seen_positions != {0}, "shuffle không chạy: correct_index luôn giữ vị trí cũ"
+    assert len(seen_positions) > 1
+
+
+@needs_genai
+def test_quiz_service_tra_dung_n_cau_va_source_gemini():
+    text = read_testdata("vi_500.txt")
+    n = Config.quiz_question_count(count_characters(text))
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(quiz_payload(n + 3))
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+
+    original_client = GeminiService._client
+    try:
+        GeminiService.set_client(mock_client)
+        result = GeminiService.generate_quiz(text, summary="Tom tat mau.", language="vi")
+        assert result["question_count"] == n == len(result["questions"])
+        assert result["source"] == "gemini"
+        assert result["language"] == "vi"
+        assert all(q["correct_index"] in (0, 1, 2, 3) for q in result["questions"])
+    finally:
+        GeminiService.set_client(original_client)
+
+
+@needs_genai
+def test_quiz_service_gui_dung_n_va_boc_document_kin():
+    """Prompt phải nhồi đúng {N}, {LANGUAGE}, và văn bản người dùng nằm trong <document>."""
+    text = read_testdata("vi_2500.txt")
+    n = Config.quiz_question_count(count_characters(text))
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(quiz_payload(n))
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+
+    original_client = GeminiService._client
+    try:
+        GeminiService.set_client(mock_client)
+        GeminiService.generate_quiz(text, summary="Tom tat mau.", language="vi")
+        kwargs = mock_client.models.generate_content.call_args.kwargs
+        system_instruction = kwargs["config"].system_instruction
+        user_content = kwargs["contents"]
+        assert f"exactly {n} questions" in system_instruction
+        assert 'this language: vi' in system_instruction
+        assert "<document>" in user_content and "</document>" in user_content
+        assert "<summary>\nTom tat mau.\n</summary>" in user_content
+        # Quiz không dùng 15s của tóm tắt: đo thật 2026-11-10, 10 câu mất ~29s
+        assert kwargs["config"].http_options.timeout == Config.GEMINI_QUIZ_TIMEOUT_SECONDS * 1000
+    finally:
+        GeminiService.set_client(original_client)
+
+
+@needs_genai
+def test_quiz_service_retry_sau_phan_hoi_hong_roi_thanh_cong():
+    """Lần 1 trả 1 câu (dưới 3) -> lần 2 trả đủ; cả hai lần đều là lời gọi API thật."""
+    text = read_testdata("vi_500.txt")
+    bad = MagicMock()
+    bad.text = json.dumps(quiz_payload(1))
+    good = MagicMock()
+    good.text = json.dumps(quiz_payload(10))
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [bad, good]
+
+    original_client = GeminiService._client
+    try:
+        GeminiService.set_client(mock_client)
+        result = GeminiService.generate_quiz(text, summary="Tom tat mau.", language="vi")
+        assert result["question_count"] == Config.quiz_question_count(count_characters(text))
+        assert mock_client.models.generate_content.call_count == 2
+    finally:
+        GeminiService.set_client(original_client)
+
+
+@needs_genai
+def test_quiz_service_het_retry_ra_ai_unavailable_khong_fallback():
+    """SPEC 5.4: quiz không có TF-IDF -> phải raise AI_UNAVAILABLE (503), không âm thầm trả câu hỏi rỗng."""
+    text = read_testdata("vi_500.txt")
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = RuntimeError("Server AI chập chờn")
+
+    original_client = GeminiService._client
+    try:
+        GeminiService.set_client(mock_client)
+        with pytest.raises(AppError) as excinfo:
+            GeminiService.generate_quiz(text, summary="Tom tat mau.", language="vi")
+        assert excinfo.value.error_code == ErrorCode.AI_UNAVAILABLE
+        assert excinfo.value.status_code == 503
+        assert mock_client.models.generate_content.call_count == Config.GEMINI_MAX_RETRY + 1
+    finally:
+        GeminiService.set_client(original_client)
+
+
+def test_quiz_service_thieu_key_ra_ai_unavailable():
+    original_client = GeminiService._client
+    original_key = Config.GEMINI_API_KEY
+    try:
+        GeminiService.set_client(None)
+        Config.GEMINI_API_KEY = ""
+        with pytest.raises(AppError) as excinfo:
+            GeminiService.generate_quiz(read_testdata("vi_500.txt"), summary="", language="vi")
+        assert excinfo.value.error_code == ErrorCode.AI_UNAVAILABLE
+    finally:
+        Config.GEMINI_API_KEY = original_key
+        GeminiService.set_client(original_client)
+
+
+@needs_genai
+def test_quiz_service_khong_log_noi_dung_cau_hoi(caplog):
+    """PROMPTS 2.4: log chỉ có số lượng/độ dài/time, không có question, option, explanation."""
+    text = read_testdata("vi_500.txt")
+    n = Config.quiz_question_count(count_characters(text))
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(quiz_payload(n))
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+
+    original_client = GeminiService._client
+    try:
+        GeminiService.set_client(mock_client)
+        with caplog.at_level(logging.INFO, logger="text_summarizer.gemini"):
+            GeminiService.generate_quiz(text, summary="Tom tat mau.", language="vi")
+        assert "Cau hoi 1?" not in caplog.text
+        assert "loan 1" not in caplog.text
+        assert "Vi cau 1." not in caplog.text
+        assert f"questions={n}" in caplog.text
+    finally:
+        GeminiService.set_client(original_client)

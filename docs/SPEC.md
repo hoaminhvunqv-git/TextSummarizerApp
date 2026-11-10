@@ -179,6 +179,7 @@ TextSummarizerAI/
 - **Số câu:** `N = clamp(floor(len / 130), 3, 10)`, `len` là số ký tự **sau khi chuẩn hóa NFC**. Không còn "mặc định 5". *(GĐ3.1: hàm `Config.quiz_question_count(char_count)`, test `tests/test_quiz_count.py`.)*
 - Mỗi câu: 4 đáp án A–D khác nhau, **đúng 1** đáp án đúng, có giải thích ngắn. Ngôn ngữ câu hỏi = `language` của bản tóm tắt.
 - Backend **kiểm tra** JSON Gemini trả về (đủ N câu, mỗi câu 4 đáp án không trùng, `correct_index` 0–3), **xáo trộn đáp án** và tính lại `correct_index` (Gemini hay đặt đáp án đúng ở vị trí cố định). JSON hỏng/thiếu: retry 1 lần, vẫn lỗi → `AI_UNAVAILABLE`.
+- **Tham số gọi quiz (GĐ3.2):** `temperature=0.7` và timeout riêng `GEMINI_QUIZ_TIMEOUT_SECONDS=30` — không dùng 15s của tóm tắt vì đo thật ngày 2026-11-10, bản 2.500 ký tự sinh 10 câu hết 28,8s. `usage_type` QUIZ đã có sẵn trong schema nên không cần migration.
 - Một bản tóm tắt có thể tạo nhiều quiz (mỗi lần tốn 1 lượt quiz).
 - API trả luôn `correct_index` và `explanation` (ứng dụng tự học, hiển thị đáp án ngay sau khi chọn). Khi nộp bài, backend **tính lại điểm** từ đáp án người dùng.
 - **Điểm:** thang 10, làm tròn 1 chữ số: `score = correct / total * 10`.

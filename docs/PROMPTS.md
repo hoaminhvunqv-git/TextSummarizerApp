@@ -7,10 +7,12 @@
 ```
 GEMINI_MODEL=gemini-3.5-flash      # đã kiểm tra qua models.list() ngày 2026-11-07; gemini-2.5-flash đã bị khai tử (404)
 GEMINI_TIMEOUT_SECONDS=15
+GEMINI_QUIZ_TIMEOUT_SECONDS=30   # quiz chậm hơn tóm tắt rõ rệt: đo thật 2026-11-10, bản 2.500 ký tự / 10 câu hết 28,8s
 GEMINI_MAX_RETRY=1                 # retry 1 lần khi JSON hỏng/rỗng, sau đó fallback
 ```
 Gọi bằng JSON có cấu trúc (`response_mime_type="application/json"` + `response_schema`), `temperature` thấp (~0.3 tóm tắt, ~0.7 quiz).
 Rỗng/bị chặn safety/timeout/JSON hỏng → retry 1 lần → fallback TF-IDF (tóm tắt) hoặc `AI_UNAVAILABLE` (quiz).
+**Rủi ro đã đo (GĐ3.2):** hai lần thử quiz nối tiếp khi Google trả 503 "high demand" hết 54,6–59,1s, chạm trần `receiveTimeout` 60s của app (`mobile/lib/core/api_client.dart:18`) → GĐ3.5 phải tăng timeout riêng cho lời gọi quiz hoặc thêm nút Thử lại.
 
 ## 1. Tóm tắt
 
@@ -108,6 +110,8 @@ Summary for context (may help you pick key ideas):
 2. Mỗi câu: đúng 4 đáp án, không trùng nhau (so sánh sau `strip().lower()`), `correct_index` ∈ 0–3, câu hỏi/giải thích không rỗng. Câu lỗi bị loại; nếu còn < 3 câu hợp lệ → retry/`AI_UNAVAILABLE`.
 3. **Xáo trộn đáp án** từng câu bằng `random.shuffle` rồi tính lại `correct_index` theo vị trí mới của đáp án đúng.
 4. Không log nội dung câu hỏi.
+
+*Đã cài đặt ở GĐ3.2 trong `services/gemini_service.py`: `normalize_quiz_questions()` thực hiện mục 1–2–3, `GeminiService.generate_quiz()` lo retry 1 lần và `AI_UNAVAILABLE`. SDK `google-genai` không hỗ trợ `minItems`/`maxItems` nên schema gửi lên chỉ khai kiểu; "đúng 4 đáp án không trùng" hoàn toàn do backend kiểm.*
 
 ## 3. OCR bằng Gemini Vision (Phương án chính thức)
 

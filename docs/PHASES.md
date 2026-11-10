@@ -92,7 +92,7 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 ## Giai đoạn 3 — Quiz
 
 1. ✅ Hàm tính `N = clamp(floor(len/130), 3, 10)` + `pytest` (400→3, 650→5, 1300→10, 5000→10). *(2026-11-10: `Config.quiz_question_count()` trong `backend/config.py` + `backend/tests/test_quiz_count.py` — 22 passed, toàn suite 167 passed.)*
-2. `gemini_service.generate_quiz` theo `PROMPTS.md`: validate JSON, xáo trộn đáp án, tính lại `correct_index`, retry 1 lần.
+2. ✅ `gemini_service.generate_quiz` theo `PROMPTS.md`: validate JSON, xáo trộn đáp án, tính lại `correct_index`, retry 1 lần. *(2026-11-10: `normalize_quiz_questions()` + `GeminiService.generate_quiz()`; 14 test mới trong `tests/test_gemini.py`, toàn suite 181 passed. Smoke thật: 10 câu/28,8s `source=gemini`, `correct_index`=[1,2,1,0,3,1,3,3,3,0]; key sai → `AI_UNAVAILABLE` 503 sau 0,43s.)*
 3. `POST /summaries/{id}/quizzes` (đặt chỗ quota QUIZ, hoàn lại nếu lỗi), `GET /summaries/{id}/quizzes`, `GET /quizzes/{id}`.
 4. `POST /quizzes/{id}/attempts` (server tự chấm), `GET /quizzes/{id}/attempts`.
 5. Flutter QuizView: từng câu, chọn A–D, hiện đúng/sai + giải thích ngay, màn kết quả/điểm thang 10, nút làm lại, nút "Tạo Quiz" ở chi tiết tóm tắt.

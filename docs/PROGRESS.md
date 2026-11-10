@@ -4,7 +4,7 @@
 
 ## Đang ở
 Giai đoạn 2 **xong cả 7 bước** — backend có lịch sử/mã hóa/quota (2.1–2.6), Flutter có `HistoryView`, `SummaryDetailView` và dòng "còn bao nhiêu lượt hôm nay" (2.7). Việc còn duy nhất của GĐ2 là bấm thử 2 màn mới trên máy thật (cần cáp + `adb reverse tcp:5000 tcp:5000`) — không làm được bằng `flutter analyze`.
-Bước **3.1** (hàm tính số câu quiz) đã xong trên nhánh mới `feature/phase-3-quiz` (mọc từ `feature/phase-2-history-quota` `d3812ab` — hai nhánh đang xếp chồng, merge GĐ2 trước rồi GĐ3 mới gọn). Bước tiếp theo: **3.2** `gemini_service.generate_quiz` theo `PROMPTS.md` (validate JSON, xáo trộn đáp án, tính lại `correct_index`, retry 1 lần).
+Bước **3.1–3.2** đã xong trên nhánh mới `feature/phase-3-quiz` (mọc từ `feature/phase-2-history-quota` `d3812ab` — hai nhánh đang xếp chồng, merge GĐ2 trước rồi GĐ3 mới gọn): hàm tính N, và `generate_quiz` validate/xáo trộn/retry + đã smoke thật với Gemini. Bước tiếp theo: **3.3** `POST /summaries/{id}/quizzes` (đặt chỗ quota QUIZ, hoàn lại nếu lỗi), `GET /summaries/{id}/quizzes`, `GET /quizzes/{id}` — đây là chỗ lưu `quiz_sessions`/`quiz_questions` đã mã hóa.
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, nay gộp thêm 2 màn lịch sử của GĐ2.7: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -111,6 +111,12 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, 
   - Đặt hàm trong `Config` vì chỗ đó đã có `target_words`/`target_sentences` — cùng loại "suy ra số lượng từ độ dài", và `SPEC.md` mục cây thư mục không khai báo file `quiz_utils.py` mới.
   - Test phủ 4 mốc DoD (400→3, 650→5, 1300→10, 5000→10), các điểm ngay trước/sau mỗi mốc 130 (519→3, 520→4, 1299→9, 1300→10), trần/đáy kẹp (1430 vẫn 10, 129 vẫn 3), đơn điệu không giảm trên suốt 0–8000 ký tự, và một ca chứng minh `N` đếm theo **ký tự NFC** chứ không theo số mã Unicode (650 ký tự "ấ" tổ hợp = 1950 mã → vẫn 5 câu).
   - Hàm **không** kiểm trần 400 ký tự: `QUIZ_TEXT_TOO_SHORT` là việc của route ở bước 3.3, nên đầu vào <400 vẫn trả 3 chứ không raise — ghi rõ trong docstring để sau này không ai thêm validate trùng.
+- Bước 3.2 (2026-11-10): `normalize_quiz_questions(raw, n)` + `GeminiService.generate_quiz(original_text, summary, language)` và `QUIZ_SYSTEM_INSTRUCTION_TEMPLATE` / `QUIZ_USER_MESSAGE_TEMPLATE` / `QUIZ_SCHEMA` trong `backend/services/gemini_service.py`. 14 test mới trong `tests/test_gemini.py`, toàn suite **181 passed, 1 deselected**. **Chưa có route** — endpoint sang bước 3.3.
+  - Thứ tự xử lý một phản hồi: lọc câu hợp lệ (đủ 4 đáp án, khác nhau sau `strip().lower()`, `question`/`explanation` không rỗng, `correct_index` nguyên 0–3 — `bool` bị loại vì trong Python `True` là `int`) → cắt còn N → nếu còn < 3 câu thì raise → mỗi câu shuffle bằng `random.shuffle` rồi **tính lại** `correct_index` bằng cách tìm đáp án đúng theo khóa đã chuẩn hóa. Nhờ bắt buộc khác nhau nên phép tìm lại luôn cho đúng một vị trí.
+  - Quiz **không** fallback TF-IDF (SPEC 5.4): mọi lỗi sau 2 lần thử → `AppError(AI_UNAVAILABLE)` 503. Thiếu `GEMINI_API_KEY` cũng đi cùng đường đó, test chứng minh không có nhánh nào gọi tới `TfidfService`.
+  - Test chống hồi quy đáng chú ý: 200 vòng shuffle xác nhận `options[correct_index]` vẫn là đáp án đúng và vị trí không bao giờ chỉ còn `{0}`; `caplog` xác nhận log không chứa câu hỏi/đáp án/giải thích; test prompt kiểm `exactly {N} questions`, `this language: vi` và văn bản nằm gọn trong `<document>`.
+  - **Bằng chứng thật (Gemini, key trong `.env`, 6 lời gọi)**: bản `vi_2500.txt` → `expected_n=10 | question_count=10 | source=gemini | time=28.83s`, `correct_index=[1,2,1,0,3,1,3,3,3,0]`, 10 câu đều có 4 đáp án khác nhau; key sai chủ đích → `AI_UNAVAILABLE | 503 | time=0.43s` (fail nhanh, không sinh câu hỏi rỗng). Script tạm chỉ đọc `testdata`, không đụng DB, đã xóa sau khi chạy.
+  - **Phát hiện bắt buộc đổi thiết kế**: 15s của tóm tắt không đủ cho quiz — 3 câu measured 17–24s, 10 câu 28,8s. Thêm `GEMINI_QUIZ_TIMEOUT_SECONDS=30` (kèm vào `.env.example`), và `temperature` sửa từ 0.3 thành **0.7** đúng PROMPTS mục 0 (tôi ban đầu chép nhầm 0.3 theo nhánh tóm tắt).
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -150,6 +156,7 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, 
   - `OCR` vẫn giữ `@limiter.limit("20 per day")` vì `usage_type` trong DB chỉ cho phép `SUMMARY`/`QUIZ`; mở cho OCR là thay đổi CHECK constraint, để GĐ3.
   - Thứ tự trong request là **validate → reserve → gọi AI → lưu DB**: validate trước để request sai không đốt lượt; `refund()` chạy trong `except` cho cả lỗi Gemini lẫn lỗi ghi DB, và lỗi hoàn lượt chỉ được log (`logger.error(type(exc).__name__)`, không log nội dung) để không che lỗi gốc.
   - `created_at` trả về lấy từ `RETURNING created_at` của DB rồi `iso_in_vn()`, không dùng `datetime.now()` ở route: thời điểm lưu DB và thời điểm API nói là một.
+- **Quiz cần timeout riêng 30s và temperature 0.7 (GĐ3.2, phát hiện khi smoke thật chứ không phải lúc đầu)**: `GEMINI_TIMEOUT_SECONDS=15` chỉ đúng với tóm tắt. Đo thật 2026-11-10 trên `vi_2500.txt`: 3 câu hết 17,0s, 10 câu hết 28,8s — với 15s thì mọi quiz dài đều chết yểu thành `AI_UNAVAILABLE`. Thêm `GEMINI_QUIZ_TIMEOUT_SECONDS` (default 30, có trong `.env.example`), `generate_quiz` dùng biến này; tóm tắt giữ nguyên 15s. Temperature ban đầu tôi chép 0.3 theo tóm tắt, PROMPTS mục 0 đã quy định ~0.7 cho quiz nên sửa lại ngay trong bước.
 - **Chưa làm (cố ý, để GĐ4):** ký keystore chính thức — APK release hiện ký debug key, cài được nhưng không phải bản phát hành lâu dài; `build.gradle.kts` chưa đọc `key.properties`.
 
 ## Thay đổi thiết kế (2026-11-09)
@@ -210,6 +217,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - **Bộ đếm 20/ngày nằm trong RAM — chỉ còn đúng với `/ocr`**: Render free ngủ khi vắng khách, mỗi lần thức dậy hoặc restart là `Flask-Limiter` quên hết → thiết bị được hoàn lượt. `/summaries` đã thoát khỏi đánh đổi này từ bước 2.5 (đếm trong `usage_quota`, nửa đêm +07, đặt chỗ nguyên tử); `/ocr` còn cho tới khi `usage_type` nhận thêm OCR ở GĐ3.
 - **`POST /summaries`, `GET /summaries*` và `GET /usage` cần `DATABASE_URL`**: để trống thì app vẫn boot (`/health`, `/api/v1/config` vẫn 200 — cố ý, giữ bất biến deploy được ở mọi giai đoạn) nhưng các route DB trả 500 `INTERNAL_ERROR` ngay lần gọi đầu tiên, không trả dữ liệu rỗng giả. Deploy GĐ2 trở đi mà quên biến này là toàn bộ luồng tóm tắt chết, không phải chỉ lịch sử.
 - **`flutter test` (chạy toàn bộ) luôn đỏ 1 case có sẵn từ trước, không phải do code mới**: `mobile/test/widget_test.dart:31` gõ "Dán chữ" rồi chờ SnackBar "Bộ nhớ tạm chưa có nội dung văn bản", nhưng `pasteFromClipboard()` đọc clipboard qua platform channel nên `await` không bao giờ hoàn tất khi chỉ dùng `pump()` — phải bọc `tester.runAsync`. Đã kiểm chứng bằng cách tạm restore 3 file ở HEAD rồi chạy lại: vẫn đúng 1 lỗi đó. Khi cần test code mới, chạy từng file (`flutter test test/history_models_test.dart`) hoặc sửa `widget_test.dart` như một việc riêng.
+- **Quiz dính `503 UNAVAILABLE "This model is currently experiencing high demand"` rất dày**: trong 6 lời gọi smoke ngày 2026-11-10 thì **4 lần** fail cả hai lượt thử (tổng 54,6s và 59,1s), chỉ 1 lần thành công ở 28,8s. Đây là phía Google, không phải lỗi schema — chính `QUIZ_SCHEMA` đó chạy được ở lần kế tiếp. Hệ quả thật: hai lần thử nối tiếp chạm trần `receiveTimeout` 60s của app (`mobile/lib/core/api_client.dart:18`), người dùng sẽ thấy "chưa kết nối được máy chủ" dù server vẫn đang làm. **Việc của GĐ3.5**: tăng timeout riêng cho lời gọi quiz (hoặc giới hạn 1 lần thử với lỗi 5xx) và thêm nút Thử lại theo SPEC mục 4.
 - **Cold start 30–60s**: request đầu tiên sau thời gian vắng hay timeout nếu Dio đặt dưới 60s; UX "Đang đánh thức máy chủ..." (SPEC 2.3) là hành vi đúng, không phải lỗi kết nối.
 - **`--bind 0.0.0.0:$PORT` trong `startCommand` là bắt buộc**: `app.py` chỉ đọc `PORT` khi chạy `app.run()`, còn gunicorn bỏ qua lệnh đó → thiếu `--bind` thì Render báo "Application failed to respond".
 - **Key JSON trong body `/summaries` là `length`, không phải `selected_length`**: backend bỏ qua key lạ và dùng mặc định `medium`, nên nếu script test gõ nhầm thì ngưỡng mở khoá bị check sai (ra 1000 ký tự thay vì 2000) và rất dễ kết luận nhầm "khoá mốc `long` bị lỗi". Ngày 2026-11-09 đã vấp đúng ca này khi tự viết script curl; code và docs đều đúng, lỗi ở script.
@@ -232,7 +240,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -q            # 167 tests, không gọi API thật, không cần DATABASE_URL
+  .\.venv\Scripts\pytest -q            # 181 tests, không gọi API thật, không cần DATABASE_URL
   .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
   ```
 - Áp migration lên DB thật (chạy khi mới tạo DB hoặc mỗi lần thêm file trong `database/migrations/`):
