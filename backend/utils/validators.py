@@ -1,6 +1,6 @@
 import functools
 import uuid
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from flask import request, g
 
 try:
@@ -66,6 +66,43 @@ def validate_summary_input(text: Optional[str], length: Optional[str] = "medium"
         )
 
     return normalized_text, selected_length
+
+
+def validate_quiz_answers(answers: Optional[list], question_count: int) -> List[Optional[int]]:
+    """Kiểm mảng đáp án nộp lên theo docs/API.md: đủ `question_count` phần tử, mỗi ô là `null` hoặc 0–3.
+
+    Chỉ chuẩn hóa kiểu, **không** chấm điểm: mọi con số điểm do `quiz_service` tính từ
+    `correct_index` trong DB. `bool` bị loại vì trong Python `True` là `int` và sẽ thành
+    đáp án B nếu để lọt.
+    """
+    if not isinstance(answers, list):
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            message=f"Cần gửi mảng `answers` đủ {question_count} phần tử (null nếu bỏ qua câu đó).",
+        )
+
+    if len(answers) != question_count:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            message=(
+                f"Mảng answers phải có đúng {question_count} phần tử "
+                f"(hiện có {len(answers)}; gửi null cho câu bỏ qua)."
+            ),
+        )
+
+    clean: List[Optional[int]] = []
+    for position, value in enumerate(answers, start=1):
+        if value is None:
+            clean.append(None)
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 3:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                message=f"Câu {position} phải là số nguyên từ 0 đến 3 hoặc null.",
+            )
+        clean.append(value)
+
+    return clean
 
 
 def validate_pagination(page: Optional[str], limit: Optional[str]) -> Tuple[int, int]:

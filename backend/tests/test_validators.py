@@ -14,6 +14,7 @@ try:
         validate_summary_input,
         validate_device_id,
         validate_app_version,
+        validate_quiz_answers,
     )
 except ImportError:
     from utils.errors import AppError, ErrorCode
@@ -27,6 +28,7 @@ except ImportError:
         validate_summary_input,
         validate_device_id,
         validate_app_version,
+        validate_quiz_answers,
     )
 
 # Đường dẫn tới thư mục testdata
@@ -184,3 +186,31 @@ def test_validate_app_version():
         validate_app_version(None)
     assert exc2.value.error_code == ErrorCode.UPDATE_REQUIRED
     assert exc2.value.status_code == 426
+
+
+def test_validate_quiz_answers_returns_the_same_positions_it_received():
+    """Chỉ chuẩn hóa kiểu, không đổi thứ tự: `null` phải giữ nguyên vị trí để app tô lại được."""
+    assert validate_quiz_answers([0, None, 3], 3) == [0, None, 3]
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected_message_part"),
+    [
+        (None, "mảng `answers`"),
+        ("012", "mảng `answers`"),
+        ([], "đúng 3 phần tử"),
+        ([0, 1], "đúng 3 phần tử"),
+        ([0, 1, 2, 3], "đúng 3 phần tử"),
+        ([0, 1, 4], "Câu 3"),
+        ([0, -1, 2], "Câu 2"),
+        ([0, "1", 2], "Câu 2"),
+        ([0, 1.0, 2], "Câu 2"),
+        ([True, False, False], "Câu 1"),
+    ],
+)
+def test_validate_quiz_answers_rejects_shapes_that_would_silently_misgrade(answers, expected_message_part):
+    with pytest.raises(AppError) as excinfo:
+        validate_quiz_answers(answers, 3)
+
+    assert excinfo.value.error_code == ErrorCode.VALIDATION_ERROR
+    assert expected_message_part in excinfo.value.message

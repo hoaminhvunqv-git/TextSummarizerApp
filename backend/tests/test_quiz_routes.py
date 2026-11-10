@@ -28,6 +28,7 @@ DEVICE_B = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 ORIGINAL = "Văn bản gốc dùng cho test quiz." + "x" * 400
 SUMMARY_TEXT = "AI cá nhân hoá lộ trình học nhưng cũng tạo rủi ro lệ thuộc công cụ."
 CREATE_PATH = "/api/v1/summaries/12/quizzes"
+ATTEMPTS_PATH = "/api/v1/quizzes/5/attempts"
 
 QUESTIONS = [
     {
@@ -135,6 +136,44 @@ class FakeStore:
             raise AppError(ErrorCode.NOT_FOUND, message="Không tìm thấy quiz này.")
         return SAVED_QUIZ
 
+    # --- quiz_attempts ---
+
+    def submit_attempt(self, quiz, answers, device_id=None, user_id=None):
+        """Chấm đơn giản tại chỗ để test route vẫn thấy shape thật của response."""
+        self.calls.append(("submit", device_id, quiz["id"], tuple(answers)))
+        results = [
+            {
+                "position": question["position"],
+                "selected": selected,
+                "correct_index": question["correct_index"],
+                "is_correct": selected == question["correct_index"],
+            }
+            for question, selected in zip(quiz["questions"], answers)
+        ]
+        correct = sum(1 for r in results if r["is_correct"])
+        total = len(results)
+        return {
+            "attempt_id": 9,
+            "score": round(correct / total * 10, 1),
+            "correct_count": correct,
+            "total_count": total,
+            "results": results,
+            "submitted_at": "2026-11-10T09:35:00+07:00",
+        }
+
+    def list_attempts(self, quiz_id, device_id=None, user_id=None):
+        self.calls.append(("attempts", device_id, quiz_id))
+        if quiz_id != 5 or device_id != DEVICE_A:
+            raise AppError(ErrorCode.NOT_FOUND, message="Không tìm thấy quiz này.")
+        return {
+            "quiz_id": quiz_id,
+            "items": [
+                {"id": 9, "score": 10.0, "correct_count": 1, "total_count": 1,
+                 "submitted_at": "2026-11-10T09:35:00+07:00"}
+            ],
+            "total": 1,
+        }
+
 
 class TestConfig(Config):
     TESTING = True
@@ -157,6 +196,8 @@ def store(monkeypatch):
     monkeypatch.setattr(quiz_service, "save_quiz", fake.save_quiz)
     monkeypatch.setattr(quiz_service, "list_quizzes", fake.list_quizzes)
     monkeypatch.setattr(quiz_service, "get_quiz", fake.get_quiz)
+    monkeypatch.setattr(quiz_service, "submit_attempt", fake.submit_attempt)
+    monkeypatch.setattr(quiz_service, "list_attempts", fake.list_attempts)
     return fake
 
 
@@ -372,12 +413,160 @@ def test_quiz_detail_of_missing_id_is_404(client, store):
     assert resp.status_code == 404
 
 
+# ---------- POST /quizzes/{id}/attempts ----------
+
+
+def test_submit_attempt_returns_the_documented_shape(client, store):
+    resp = client.post(ATTEMPTS_PATH, json={"answers": [0]}, headers=headers(DEVICE_A))
+
+    assert resp.status_code == 201
+    data = resp.get_json()["data"]
+    assert set(data) == {"attempt_id", "score", "correct_count", "total_count", "results",
+                         "submitted_at"}
+    assert data["attempt_id"] == 9
+    assert data["score"] == 10.0 and data["correct_count"] == 1 and data["total_count"] == 1
+    assert data["results"] == [
+        {"position": 1, "selected": 0, "correct_index": 0, "is_correct": True}
+    ]
+    assert data["submitted_at"] == "2026-11-10T09:35:00+07:00"
+
+
+def test_submit_attempt_grades_against_stored_correct_index(client, store):
+    """Câu 1 có `correct_index` = 0 trong DB; chọn 1 phải 0 điểm dù client tin là đúng."""
+    resp = client.post(ATTEMPTS_PATH, json={"answers": [1]}, headers=headers(DEVICE_A))
+
+    data = resp.get_json()["data"]
+    assert data["score"] == 0.0
+    assert data["results"][0]["is_correct"] is False
+    assert data["results"][0]["correct_index"] == 0
+
+
+def test_submit_attempt_ignores_numbers_sent_by_client(client, store):
+    resp = client.post(
+        ATTEMPTS_PATH,
+        json={"answers": [2], "score": 10.0, "correct_count": 99, "total_count": 1,
+              "results": [{"position": 1, "is_correct": True}]},
+        headers=headers(DEVICE_A),
+    )
+
+    data = resp.get_json()["data"]
+    assert data["score"] == 0.0 and data["correct_count"] == 0
+    # Việc duy nhất xuống tầng lưu trữ là mảng index đã chọn, không phải điểm.
+    assert store.calls[-1] == ("submit", DEVICE_A, 5, (2,))
+
+
+def test_submit_attempt_passes_the_device_of_the_caller(client, store):
+    client.post(ATTEMPTS_PATH, json={"answers": [0]}, headers=headers(DEVICE_A))
+
+    assert store.calls[-1][1] == DEVICE_A
+
+
+def test_submit_attempt_never_touches_quota_or_ai(client, store, ai):
+    client.post(ATTEMPTS_PATH, json={"answers": [0]}, headers=headers(DEVICE_A))
+
+    assert kinds(store) == ["detail", "submit"]
+    ai.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"answers": None},
+        {"answers": "0"},
+        {"answers": {}},
+        {"answers": []},
+        {"answers": [0, 1]},
+        {"answers": [4]},
+        {"answers": [-1]},
+        {"answers": ["0"]},
+        {"answers": [0.0]},
+        {"answers": [True]},
+        {"answers": [None, 0]},
+    ],
+)
+def test_invalid_answers_are_validation_error_without_grading(client, store, body):
+    resp = client.post(ATTEMPTS_PATH, json=body, headers=headers(DEVICE_A))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error_code"] == ErrorCode.VALIDATION_ERROR
+    assert "submit" not in kinds(store)
+
+
+def test_skipped_question_is_accepted_as_null(client, store):
+    resp = client.post(ATTEMPTS_PATH, json={"answers": [None]}, headers=headers(DEVICE_A))
+
+    assert resp.status_code == 201
+    assert resp.get_json()["data"]["score"] == 0.0
+    assert store.calls[-1] == ("submit", DEVICE_A, 5, (None,))
+
+
+@pytest.mark.parametrize("body", [None, [0], "abc"])
+def test_body_must_be_a_json_object(client, store, body):
+    resp = client.post(ATTEMPTS_PATH, json=body, headers=headers(DEVICE_A))
+
+    assert resp.status_code == 400
+    assert resp.get_json()["error_code"] == ErrorCode.VALIDATION_ERROR
+
+
+def test_submit_attempt_of_another_device_is_404_before_grading(client, store):
+    resp = client.post(ATTEMPTS_PATH, json={"answers": [0]}, headers=headers(DEVICE_B))
+
+    assert resp.status_code == 404
+    assert resp.get_json()["error_code"] == ErrorCode.NOT_FOUND
+    assert kinds(store) == ["detail"]
+
+
+def test_submit_attempt_of_missing_quiz_is_404(client, store):
+    resp = client.post("/api/v1/quizzes/999999/attempts", json={"answers": [0]},
+                       headers=headers(DEVICE_A))
+
+    assert resp.status_code == 404
+    assert "submit" not in kinds(store)
+
+
+# ---------- GET /quizzes/{id}/attempts ----------
+
+
+def test_list_attempts_returns_scores_without_answers(client, store):
+    resp = client.get(ATTEMPTS_PATH, headers=headers(DEVICE_A))
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert set(data) == {"quiz_id", "items", "total"}
+    assert data["quiz_id"] == 5 and data["total"] == 1
+    assert set(data["items"][0]) == {"id", "score", "correct_count", "total_count", "submitted_at"}
+
+
+def test_list_attempts_never_touches_quota_or_ai(client, store, ai):
+    client.get(ATTEMPTS_PATH, headers=headers(DEVICE_A))
+
+    assert kinds(store) == ["attempts"]
+    ai.assert_not_called()
+
+
+def test_list_attempts_of_another_device_is_404(client, store):
+    resp = client.get(ATTEMPTS_PATH, headers=headers(DEVICE_B))
+
+    assert resp.status_code == 404
+    assert resp.get_json()["message"] == "Không tìm thấy quiz này."
+
+
+@pytest.mark.parametrize("bad_id", ["abc", "1.5"])
+def test_non_integer_quiz_id_for_attempts_is_json_404(client, store, bad_id):
+    resp = client.get(f"/api/v1/quizzes/{bad_id}/attempts", headers=headers(DEVICE_A))
+
+    assert resp.status_code == 404
+    assert resp.get_json()["error_code"] == ErrorCode.NOT_FOUND
+
+
 # ---------- headers và đăng ký route ----------
 
 
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("post", CREATE_PATH), ("get", CREATE_PATH), ("get", "/api/v1/quizzes/5")],
+    [("post", CREATE_PATH), ("get", CREATE_PATH), ("get", "/api/v1/quizzes/5"),
+     ("post", ATTEMPTS_PATH), ("get", ATTEMPTS_PATH)],
 )
 def test_quiz_routes_require_device_id(client, store, method, path):
     resp = getattr(client, method)(path, headers={"X-App-Version": "1.0.0"})
@@ -388,7 +577,8 @@ def test_quiz_routes_require_device_id(client, store, method, path):
 
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("post", CREATE_PATH), ("get", CREATE_PATH), ("get", "/api/v1/quizzes/5")],
+    [("post", CREATE_PATH), ("get", CREATE_PATH), ("get", "/api/v1/quizzes/5"),
+     ("post", ATTEMPTS_PATH), ("get", ATTEMPTS_PATH)],
 )
 def test_quiz_routes_require_current_app_version(client, store, method, path):
     resp = getattr(client, method)(path, headers={"X-Device-ID": DEVICE_A, "X-App-Version": "0.9.0"})
@@ -407,3 +597,5 @@ def test_quiz_routes_are_registered():
     assert ("/api/v1/summaries/<int:summary_id>/quizzes", ("OPTIONS", "POST")) in rules
     assert ("/api/v1/summaries/<int:summary_id>/quizzes", ("GET", "HEAD", "OPTIONS")) in rules
     assert ("/api/v1/quizzes/<int:quiz_id>", ("GET", "HEAD", "OPTIONS")) in rules
+    assert ("/api/v1/quizzes/<int:quiz_id>/attempts", ("OPTIONS", "POST")) in rules
+    assert ("/api/v1/quizzes/<int:quiz_id>/attempts", ("GET", "HEAD", "OPTIONS")) in rules

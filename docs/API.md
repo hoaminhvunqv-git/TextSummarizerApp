@@ -168,18 +168,31 @@ Mọi quiz từng tạo từ một bản tóm tắt, mới nhất trước (`cre
 Câu hỏi trả về theo `position` tăng dần và kèm `correct_index` + `explanation` (thiết bị tự chấm từng câu ngay khi chọn — SPEC 5.4). Quiz của thiết bị khác hoặc id không tồn tại → 404 `NOT_FOUND` với cùng một thông điệp "Không tìm thấy quiz này."; id không phải số cũng 404.
 
 ### POST `/quizzes/{id}/attempts`
-Request (mảng độ dài = `question_count`, `null` = bỏ qua):
+Request (mảng độ dài **đúng bằng** `question_count`, `null` = bỏ qua):
 ```json
 { "answers": [0, 2, null, 1, 3] }
 ```
-Response:
+Response **201**:
 ```json
 { "success": true, "message": "Xử lý thành công",
   "data": { "attempt_id": 9, "score": 6.0, "correct_count": 3, "total_count": 5,
             "results": [ { "position": 1, "selected": 0, "correct_index": 0, "is_correct": true } ],
-            "submitted_at": "..." } }
+            "submitted_at": "2026-11-10T20:55:36+07:00" } }
 ```
-Lỗi: `VALIDATION_ERROR` (sai độ dài mảng / giá trị ngoài 0–3). Backend tự tính điểm, không tin điểm từ client. Nộp bài **không** tốn quota.
+`score = correct_count / total_count * 10`, lấy 1 chữ số thập phân và **làm tròn nửa lên** (`ROUND_HALF_UP`) — 1/8 câu đúng ra `1.3`, không phải `1.2`. Câu `null` tính là sai. `results` trả đủ mọi câu theo `position` tăng dần; `correct_index` lấy từ DB, nên cùng một bài nộp luôn cho cùng một điểm.
+
+Server **tự chấm, không tin client**: mọi trường `score` / `correct_count` / `total_count` / `results` gửi kèm đều bị bỏ qua. Thứ tự chặn là *chủ sở hữu → độ dài mảng*, nên quiz của thiết bị khác trả 404 chứ không phải 400 — client không dò được số câu của bản ghi người khác. Mảng sai độ dài hoặc giá trị ngoài 0–3 → 400 `VALIDATION_ERROR` và **không ghi dòng nào**. Đáp án nộp được lưu mã hoá ở `quiz_attempts.answers_json_enc` (`null` vẫn là `null` trong mảng). Nộp bài **không** trừ lượt, không gọi AI; làm lại bao nhiêu lần tuỳ ý, mỗi lần là một dòng `quiz_attempts`.
+
+### GET `/quizzes/{id}/attempts`
+```json
+{ "success": true, "message": "Xử lý thành công",
+  "data": { "quiz_id": 5, "total": 2,
+            "items": [ { "id": 9, "score": 6.0, "correct_count": 3, "total_count": 5,
+                         "submitted_at": "2026-11-10T20:55:36+07:00" } ] } }
+```
+Toàn bộ lượt làm bài của một quiz, mới nhất trước (`submitted_at DESC, id DESC`). Trang này **không** kèm `answers` hay `results`: muốn xem lại chi tiết từng câu thì nộp lại bài. Chưa làm lần nào → 200 với `items: []`; quiz không thuộc người gọi hoặc id không phải số → 404 `NOT_FOUND` ("Không tìm thấy quiz này."). Đọc lịch sử **không** trừ lượt.
+
+> Trạng thái app (2026-11-10): màn làm bài hiển thị recap của **chính lần nộp vừa xong** lấy từ response 201, nên endpoint này chưa có màn nào gọi tới — để dành cho màn thống kê ở GĐ4. Đường dẫn và shape đã kiểm khớp với `app.url_map`.
 
 ### POST `/auth/register`
 ```json

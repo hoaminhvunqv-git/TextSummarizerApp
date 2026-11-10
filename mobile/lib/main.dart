@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme.dart';
 import 'providers/history_provider.dart';
+import 'providers/quiz_provider.dart';
 import 'providers/summary_provider.dart';
 import 'views/home_view.dart';
 
@@ -19,6 +20,7 @@ class TextSummarizerApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SummaryProvider()),
         ChangeNotifierProvider(create: (_) => HistoryProvider()),
+        ChangeNotifierProvider(create: (_) => QuizProvider()),
       ],
       child: MaterialApp(
         title: 'TextSummarizer AI',

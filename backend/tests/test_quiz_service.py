@@ -371,3 +371,178 @@ def test_get_quiz_stops_before_database_when_key_missing(db, monkeypatch):
         quiz_service.get_quiz(5, device_id="device-1")
 
     assert cur.calls == []
+
+
+# ---------- chấm điểm (SPEC 5.4) ----------
+
+
+def loaded_quiz(count=4):
+    """Kết quả `get_quiz` thu gọn — đủ những gì bộ chấm cần đọc."""
+    return {
+        "id": 5,
+        "summary_id": 12,
+        "question_count": count,
+        "language": "vi",
+        "created_at": "2026-11-10T09:30:00+07:00",
+        "questions": [
+            {
+                "id": 30 + i,
+                "position": i,
+                "question": f"{QUESTION_TEXT} {i}",
+                "options": list(OPTIONS),
+                "correct_index": (i - 1) % 4,
+                "explanation": EXPLANATION,
+            }
+            for i in range(1, count + 1)
+        ],
+    }
+
+
+def test_grade_quiz_uses_only_correct_index_from_db():
+    quiz = loaded_quiz(4)
+
+    data = quiz_service.grade_quiz(quiz["questions"], [0, 1, 2, 3])
+
+    assert data["correct_count"] == 4
+    assert data["total_count"] == 4
+    assert data["score"] == 10.0
+    assert [r["is_correct"] for r in data["results"]] == [True, True, True, True]
+
+
+def test_grade_quiz_counts_skipped_as_wrong_but_keeps_position():
+    quiz = loaded_quiz(4)
+
+    data = quiz_service.grade_quiz(quiz["questions"], [0, None, 0, None])
+
+    assert data["correct_count"] == 1
+    assert data["score"] == 2.5
+    assert [(r["position"], r["selected"], r["is_correct"]) for r in data["results"]] == [
+        (1, 0, True), (2, None, False), (3, 0, False), (4, None, False),
+    ]
+    assert all(r["correct_index"] == q["correct_index"] for r, q in zip(data["results"], quiz["questions"]))
+
+
+def test_grade_quiz_all_wrong_is_zero():
+    data = quiz_service.grade_quiz(loaded_quiz(3)["questions"], [3, 3, 3])
+
+    assert data["score"] == 0.0
+    assert data["correct_count"] == 0
+    assert data["total_count"] == 3
+    assert [r["is_correct"] for r in data["results"]] == [False, False, False]
+
+
+@pytest.mark.parametrize(
+    ("correct", "total", "expected"),
+    [
+        (1, 8, 1.3),   # Python `round(1.25, 1)` cho 1.2 — người dùng trông đợi 1.3
+        (5, 8, 6.3),   # 6.25 cũng vậy
+        (7, 9, 7.8),   # 7.777...
+        (1, 3, 3.3),   # 3.333...
+        (2, 3, 6.7),   # 6.666...
+        (0, 10, 0.0),
+        (10, 10, 10.0),
+    ],
+)
+def test_score_is_scale_10_with_one_decimal_rounded_half_up(correct, total, expected):
+    questions = [
+        {"position": i, "correct_index": 0 if i <= correct else 1} for i in range(1, total + 1)
+    ]
+
+    data = quiz_service.grade_quiz(questions, [0] * total)
+
+    assert data["score"] == expected
+
+
+# ---------- quiz_attempts ----------
+
+
+def test_submit_attempt_inserts_one_row_with_encrypted_answers(db, key):
+    quiz = loaded_quiz(4)
+    answers = [0, 1, None, 3]
+    cur = db([(9, WHEN)])
+
+    data = quiz_service.submit_attempt(quiz, answers, device_id="device-1")
+
+    sql, params = cur.calls[0]
+    assert "INSERT INTO quiz_attempts" in sql and "RETURNING id, submitted_at" in sql
+    user_id, device_id, session_id, answers_enc, score, correct_count, total_count = params
+    assert (user_id, device_id, session_id) == (None, "device-1", 5)
+    assert (score, correct_count, total_count) == (7.5, 3, 4)
+    assert "[0, 1" not in answers_enc
+    base64.b64decode(answers_enc, validate=True)
+    assert json.loads(key.decrypt(answers_enc)) == answers
+    assert data["attempt_id"] == 9
+    assert data["submitted_at"] == "2026-11-10T09:30:00+07:00"
+
+
+def test_submit_attempt_returns_documented_shape(db, key):
+    db([(9, WHEN)])
+
+    data = quiz_service.submit_attempt(loaded_quiz(3), [0, 1, 2], device_id="device-1")
+
+    assert set(data) == {"attempt_id", "score", "correct_count", "total_count", "results",
+                         "submitted_at"}
+    assert set(data["results"][0]) == {"position", "selected", "correct_index", "is_correct"}
+    assert list(data) == ["attempt_id", "score", "correct_count", "total_count", "results",
+                          "submitted_at"]
+
+
+def test_submit_attempt_ignores_client_score_fields(db, key):
+    """Client có gõ `score`/`correct_count` trong payload cũng không ảnh hưởng kết quả."""
+    db([(9, WHEN)])
+
+    data = quiz_service.submit_attempt(loaded_quiz(4), [0, 0, 0, 0], device_id="device-1")
+
+    assert (data["score"], data["correct_count"]) == (2.5, 1)
+
+
+def test_submit_attempt_stops_before_database_when_key_missing(db, monkeypatch):
+    cur = db([(9, WHEN)])
+    monkeypatch.setattr(Config, "ENCRYPTION_KEY", "")
+
+    with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
+        quiz_service.submit_attempt(loaded_quiz(3), [0, 1, 2], device_id="device-1")
+
+    assert cur.calls == []
+
+
+def test_list_attempts_checks_quiz_owner_first(db):
+    cur = db([None])
+
+    with pytest.raises(AppError) as excinfo:
+        quiz_service.list_attempts(5, device_id="trộm-1")
+
+    assert excinfo.value.error_code == ErrorCode.NOT_FOUND
+    assert excinfo.value.message == "Không tìm thấy quiz này."
+    assert len(cur.calls) == 1
+
+
+def test_list_attempts_returns_scores_only_newest_first(db):
+    older = (8, 4.0, 2, 5, datetime(2026, 11, 9, 2, 30, tzinfo=timezone.utc))
+    cur = db([(5, 12, 3, "vi", WHEN), [(9, 8.0, 4, 5, WHEN), older]])
+
+    data = quiz_service.list_attempts(5, device_id="device-1")
+
+    assert data == {
+        "quiz_id": 5,
+        "items": [
+            {"id": 9, "score": 8.0, "correct_count": 4, "total_count": 5,
+             "submitted_at": "2026-11-10T09:30:00+07:00"},
+            {"id": 8, "score": 4.0, "correct_count": 2, "total_count": 5,
+             "submitted_at": "2026-11-09T09:30:00+07:00"},
+        ],
+        "total": 2,
+    }
+    sql, params = cur.calls[1]
+    assert "answers_json_enc" not in sql and "question_text_enc" not in sql
+    assert "ORDER BY qa.submitted_at DESC, qa.id DESC" in sql
+    assert "JOIN quiz_sessions qs" in sql and "JOIN summaries s" in sql
+    assert params == (5, None, "device-1")
+
+
+def test_list_attempts_never_called_with_no_history(db):
+    db([(5, 12, 3, "vi", WHEN), []])
+
+    assert quiz_service.list_attempts(5, device_id="device-1") == {
+        "quiz_id": 5, "items": [], "total": 0,
+    }

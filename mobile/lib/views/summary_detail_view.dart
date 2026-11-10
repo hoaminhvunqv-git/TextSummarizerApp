@@ -5,9 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/constants.dart';
 import '../models/history_models.dart';
+import '../models/quiz_models.dart';
 import '../providers/history_provider.dart';
+import '../providers/quiz_provider.dart';
+import 'quiz_view.dart';
 
-/// Một bản tóm tắt đã lưu: nội dung, văn bản gốc và nút xóa (docs/API.md: GET/DELETE /summaries/{id}).
+/// Một bản tóm tắt đã lưu: nội dung, văn bản gốc, quiz và nút xóa
+/// (docs/API.md: GET/DELETE /summaries/{id}, /summaries/{id}/quizzes).
 class SummaryDetailView extends StatefulWidget {
   const SummaryDetailView({super.key, required this.summaryId});
 
@@ -25,6 +29,12 @@ class _SummaryDetailViewState extends State<SummaryDetailView> {
   bool _isLoading = true;
   bool _showOriginal = false;
 
+  List<QuizListItem> _quizzes = const <QuizListItem>[];
+  bool _isLoadingQuizzes = false;
+
+  /// Đang gọi máy chủ sinh quiz hoặc đang mở một quiz cũ — khoá nút để không đốt hai lượt.
+  bool _isQuizBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +50,66 @@ class _SummaryDetailViewState extends State<SummaryDetailView> {
       _detail = detail;
       _errorMessage = detail == null ? provider.errorMessage : null;
     });
+    if (detail != null) await _loadQuizzes();
+  }
+
+  Future<void> _loadQuizzes() async {
+    setState(() => _isLoadingQuizzes = true);
+    final quizzes = await context.read<QuizProvider>().loadQuizzes(widget.summaryId);
+    if (!mounted) return;
+    setState(() {
+      _quizzes = quizzes;
+      _isLoadingQuizzes = false;
+    });
+  }
+
+  /// Tạo quiz mới tốn 1 lượt quiz và một lời gọi Gemini (~20–30s), nên báo lỗi
+  /// bằng đúng thông điệp server trả: "hết lượt" khác "mất mạng" khác "văn bản quá ngắn".
+  Future<void> _createQuiz() async {
+    setState(() => _isQuizBusy = true);
+    final provider = context.read<QuizProvider>();
+    final quiz = await provider.createQuiz(widget.summaryId);
+    if (!mounted) return;
+    setState(() => _isQuizBusy = false);
+
+    if (quiz == null) {
+      _showQuizError(provider.errorMessage ?? 'Không tạo được quiz. Vui lòng thử lại.');
+      return;
+    }
+    await _loadQuizzes();
+    if (!mounted) return;
+    await _open(quiz);
+  }
+
+  Future<void> _openExisting(QuizListItem item) async {
+    setState(() => _isQuizBusy = true);
+    final provider = context.read<QuizProvider>();
+    final quiz = await provider.openQuiz(item.id);
+    if (!mounted) return;
+    setState(() => _isQuizBusy = false);
+
+    if (quiz == null) {
+      _showQuizError(provider.errorMessage ?? 'Không mở được quiz này.');
+      return;
+    }
+    await _open(quiz);
+  }
+
+  Future<void> _open(Quiz quiz) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => QuizView(quiz: quiz)),
+    );
+    if (!mounted) return;
+    await _loadQuizzes();
+  }
+
+  void _showQuizError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppConstants.errorColor),
+      );
   }
 
   Future<void> _confirmDelete() async {
@@ -183,6 +253,16 @@ class _SummaryDetailViewState extends State<SummaryDetailView> {
             expanded: _showOriginal,
             onToggle: () => setState(() => _showOriginal = !_showOriginal),
           ),
+          const SizedBox(height: 16),
+          _QuizCard(
+            quizzes: _quizzes,
+            isLoading: _isLoadingQuizzes,
+            isBusy: _isQuizBusy,
+            canCreate: detail.originalLength >= AppConstants.minChars,
+            dateFormat: _dateFormat,
+            onCreate: _createQuiz,
+            onOpen: _openExisting,
+          ),
         ],
       ),
     );
@@ -312,6 +392,117 @@ class _OriginalTextCard extends StatelessWidget {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuizCard extends StatelessWidget {
+  const _QuizCard({
+    required this.quizzes,
+    required this.isLoading,
+    required this.isBusy,
+    required this.canCreate,
+    required this.dateFormat,
+    required this.onCreate,
+    required this.onOpen,
+  });
+
+  final List<QuizListItem> quizzes;
+  final bool isLoading;
+  final bool isBusy;
+
+  /// False khi văn bản gốc dưới ngưỡng 400 ký tự: server sẽ trả `QUIZ_TEXT_TOO_SHORT`,
+  /// nên tốt hơn là không mời người dùng bấm.
+  final bool canCreate;
+  final DateFormat dateFormat;
+  final Future<void> Function() onCreate;
+  final Future<void> Function(QuizListItem) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.quiz_outlined, size: 18, color: AppConstants.primaryColor),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'Trắc nghiệm',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                if (quizzes.isNotEmpty)
+                  Text(
+                    '${quizzes.length} quiz',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.4, color: AppConstants.secondaryColor),
+                  ),
+                ),
+              )
+            else if (quizzes.isEmpty)
+              Text(
+                'Chưa có bộ câu hỏi nào cho bản tóm tắt này.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              )
+            else
+              for (final quiz in quizzes)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  enabled: !isBusy,
+                  title: Text(
+                    '${quiz.questionCount} câu hỏi',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    dateFormat.format(quiz.createdAt),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: AppConstants.secondaryColor),
+                  onTap: () => onOpen(quiz),
+                ),
+            const SizedBox(height: 6),
+            if (!canCreate)
+              Text(
+                'Văn bản gốc cần tối thiểu ${AppConstants.minChars} ký tự để tạo quiz.',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+              )
+            else
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppConstants.secondaryColor,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: isBusy ? null : onCreate,
+                icon: isBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 18),
+                label: Text(isBusy ? 'Đang tạo quiz, khoảng 30 giây...' : 'Tạo quiz mới'),
+              ),
           ],
         ),
       ),

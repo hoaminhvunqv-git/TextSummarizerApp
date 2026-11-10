@@ -107,7 +107,7 @@ TextSummarizerAI/
 │   ├── routes/                 # system_routes.py, summary_routes.py, file_routes.py, ocr_routes.py,
 │   │                           # usage_routes.py, quiz_routes.py, auth_routes.py
 │   ├── services/               # gemini_service.py, tfidf_service.py, ocr_service.py, file_service.py,
-│   │                           # crypto_service.py, quota_service.py, history_service.py,
+│   │                           # crypto_service.py, quota_service.py, history_service.py, quiz_service.py,
 │   │                           # email_service.py, auth_service.py
 │   ├── utils/                  # responses.py, errors.py, validators.py, text_utils.py, time_utils.py, auth_utils.py
 │   ├── database/
@@ -122,12 +122,12 @@ TextSummarizerAI/
     ├── assets/fonts/Roboto-*.ttf
     └── lib/
         ├── main.dart
-        ├── core/               # api_client.dart, constants.dart, storage_service.dart, theme.dart, text_utils.dart
-        ├── models/             # summary_model.dart, quiz_model.dart, user_model.dart
-        ├── providers/          # summary_provider.dart, quiz_provider.dart, auth_provider.dart
-        ├── widgets/            # component dùng lại (SummaryCard, LoadingOverlay, EmptyState, ...)
-        └── views/              # home_view, history_view, summary_detail_view, quiz_view, auth_view
+        ├── core/               # api_client.dart, constants.dart, storage_service.dart, theme.dart
+        ├── models/             # history_models.dart, quiz_models.dart (user_model.dart thuộc GĐ4)
+        ├── providers/          # summary_provider.dart, history_provider.dart, quiz_provider.dart (auth_provider.dart thuộc GĐ4)
+        └── views/              # home_view, history_view, summary_detail_view, quiz_view, quiz_result_view (auth_view thuộc GĐ4)
 ```
+> `widgets/` không tồn tại: mỗi component chỉ dùng trong một màn nên nằm dạng private ngay trong file view (`_SummaryCard`, `_OptionTile`, `_ResultTile`), tránh một thư mục chứa toàn widget một lần dùng.
 > `ocr_service.py` **đang dùng** vì OCR đã chọn phương án B — Gemini Vision (mục 5.3, kiểm chứng trên `ocr_vi.jpg` ngày 2026-11-09); ML Kit on-device đã bỏ vì sai dấu tiếng Việt.
 
 ---
@@ -150,6 +150,11 @@ TextSummarizerAI/
   - Hiển thị **số lượt còn lại** hôm nay (từ `GET /api/v1/usage`).
   - Màn kết quả có: **Copy**, **Chia sẻ**, **Tạo Quiz**, **Xóa**. Lịch sử có pull-to-refresh và xóa từng mục (vuốt hoặc menu).
 - **Dòng lưu ý quyền riêng tư** ở màn Home (nội dung được gửi tới dịch vụ AI để xử lý).
+- **Màn quiz (từ bước 3.5, GĐ3):**
+  - Nút **Tạo quiz mới** nằm ở card *Trắc nghiệm* trong màn chi tiết tóm tắt, tắt khi văn bản gốc dưới 400 ký tự và hiện "Đang tạo quiz, khoảng 30 giây..." trong lúc chờ; quiz đã có liệt kê ngay bên dưới để mở lại **không tốn lượt**.
+  - Làm bài theo từng câu: chọn A–D là biết đúng/sai **ngay tại máy** kèm giải thích, có nút **Bỏ qua câu này** (server tính là sai). Đã chọn thì khoá câu đó, đổi ý sẽ lệch với mảng nộp đi.
+  - Điểm trên màn kết quả là điểm **server chấm** (`POST /quizzes/{id}/attempts`), không phải điểm app tự cộng; nút **Làm lại** xoá sạch đáp án tại chỗ và nộp thành một lượt mới.
+  - Riêng lời gọi tạo quiz dùng `receiveTimeout` **150s** thay vì 60s mặc định của Dio: `GEMINI_QUIZ_TIMEOUT_SECONDS=30` cộng 1 lần retry là kịch bản xấu chạm trần 60s (đo thật 2026-11-10: 54,6s và 59,1s).
 
 ---
 
@@ -186,7 +191,19 @@ TextSummarizerAI/
   không escape `\u`) rồi mới mã hóa. Hoặc đủ cả quiz, hoặc không có gì — DB không bao giờ giữ quiz thiếu câu.
   Thứ tự chặn trong route là *chủ sở hữu → `original_length` ≥ 400 → đặt chỗ QUIZ → gọi AI → lưu*; AI lỗi hoặc DB lỗi thì hoàn đúng một lượt.
 - API trả luôn `correct_index` và `explanation` (ứng dụng tự học, hiển thị đáp án ngay sau khi chọn). Khi nộp bài, backend **tính lại điểm** từ đáp án người dùng.
-- **Điểm:** thang 10, làm tròn 1 chữ số: `score = correct / total * 10`.
+- **Điểm:** thang 10, 1 chữ số thập phân: `score = correct / total * 10`, làm tròn **nửa lên** bằng `Decimal` + `ROUND_HALF_UP`.
+  Bắt buộc dùng `Decimal` chứ không `round()`: `round(1/8*10, 1)` ra `1.2` (banker's rounding) trong khi 1/8 câu là độ dài quiz hoàn toàn bình thường.
+  Câu `null` (bỏ qua) tính là **sai**.
+- **Nộp bài (từ bước 3.4):** `quiz_service.submit_attempt()` chỉ dùng `correct_index` đọc từ DB — mọi `score`/`correct_count`/`results`
+  client gửi lên bị bỏ qua, nên không thể xin điểm. Một lần nộp = một dòng `quiz_attempts`, trả 201 kèm `results` đủ mọi câu theo `position`.
+  `answers_json_enc` là `json.dumps(answers, ensure_ascii=False)` rồi mã hóa (`null` vẫn nằm nguyên trong mảng).
+  **Không đặt chỗ quota, không gọi AI** — làm lại bao nhiêu lần tuỳ ý; `reserve`/`refund` không được phép xuất hiện trên đường này.
+  Route đọc quiz trước khi validate (cùng nguyên tắc bước 3.3): quiz của người khác → 404 chứ không phải 400,
+  độ dài mảng tiết lộ `question_count` của bản ghi người khác. Mảng sai chỉ số/độ dài → 400 và không ghi dòng nào.
+- **Lịch sử làm bài:** `GET /quizzes/{id}/attempts` trả `{quiz_id, items, total}`, `items` chỉ có `id`/`score`/`correct_count`/`total_count`/`submitted_at`
+  (không kèm đáp án, không `answers_json_enc`), thứ tự `submitted_at DESC, id DESC`; chưa làm lần nào → 200 mảng rỗng.
+  Kiểm chứng thật trên Neon 2026-11-10: 9 câu → đúng hết 10.0, sai hết kèm `score: 10.0` giả → vẫn 0.0, bỏ qua 1 câu → 8.9,
+  `usage.quiz.used` vẫn 0, thiết bị khác 404 cả POST lẫn GET, `DELETE /summaries/{id}` xoá sạch `quiz_attempts` qua CASCADE.
 
 ### 5.5. Quota & định danh
 - **20 tóm tắt/ngày** và **20 quiz/ngày** cho mỗi chủ thể.
@@ -223,9 +240,12 @@ TextSummarizerAI/
   Cách này cũng khớp ý nghĩa của API: người xem được bản tóm tắt thì xem được quiz của nó.
   `list_quizzes` chạy thêm một câu `SELECT 1 FROM summaries s WHERE s.id = %s AND …` **trước** khi liệt kê,
   để id của người khác trả 404 chứ không phải danh sách rỗng.
-  Ràng buộc mới này có một mặt trái phải nhớ: **mẫu điều kiện mang alias `s.`**, nên mọi câu dùng nó phải tự khai báo
+  Ràng buộc của mẫu điều kiện này có một mặt trái phải nhớ: nó **mang alias `s.`**, nên mọi câu dùng nó phải tự khai báo
   `summaries s`; PostgreSQL báo `missing FROM-clause entry for table "s"` mà cursor giả trong unit test không phát hiện được
-  (đúng lỗi mà smoke Neon ngày 2026-11-10 bắt ra) — `tests/test_quiz_service.py` có test kiểm tra alias tĩnh để không tái phạm.
+  (đúng lỗi mà smoke Neon ngày 2026-11-10 bắt ra) — `tests/test_quiz_service.py` có test kiểm tra alias tĩnh cho `s.` và `qs.` để không tái phạm.
+- **Lượt làm bài cũng đi qua bản tóm tắt cha (từ bước 3.4):** `quiz_attempts` không tự kiểm tra cột của nó mà
+  `JOIN quiz_sessions qs … JOIN summaries s` rồi áp cùng mẫu điều kiện cho `s.`; hai endpoint attempts đều chạy
+  một câu kiểm tra quiz trước (`get_quiz`) nên id của người khác 404 ở cả POST lẫn GET.
 - **Gộp dữ liệu khi đăng nhập/đăng ký-xác thực:** nếu có `X-Device-ID`, chạy trong 1 transaction:
   ```sql
   UPDATE summaries      SET user_id = :uid WHERE device_id = :did AND user_id IS NULL;
