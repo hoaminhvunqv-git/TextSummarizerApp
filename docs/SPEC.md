@@ -176,7 +176,7 @@ TextSummarizerAI/
 ### 5.4. Tạo Quiz (đã chốt)
 - **Nguồn:** văn bản gốc của bản tóm tắt (giải mã từ `original_text_enc`); bản tóm tắt làm ngữ cảnh phụ.
 - Điều kiện: độ dài văn bản gốc **≥ 400 ký tự** (dùng cột `original_length`), nếu không → `QUIZ_TEXT_TOO_SHORT`.
-- **Số câu:** `N = clamp(floor(len / 130), 3, 10)`. Không còn "mặc định 5".
+- **Số câu:** `N = clamp(floor(len / 130), 3, 10)`, `len` là số ký tự **sau khi chuẩn hóa NFC**. Không còn "mặc định 5". *(GĐ3.1: hàm `Config.quiz_question_count(char_count)`, test `tests/test_quiz_count.py`.)*
 - Mỗi câu: 4 đáp án A–D khác nhau, **đúng 1** đáp án đúng, có giải thích ngắn. Ngôn ngữ câu hỏi = `language` của bản tóm tắt.
 - Backend **kiểm tra** JSON Gemini trả về (đủ N câu, mỗi câu 4 đáp án không trùng, `correct_index` 0–3), **xáo trộn đáp án** và tính lại `correct_index` (Gemini hay đặt đáp án đúng ở vị trí cố định). JSON hỏng/thiếu: retry 1 lần, vẫn lỗi → `AI_UNAVAILABLE`.
 - Một bản tóm tắt có thể tạo nhiều quiz (mỗi lần tốn 1 lượt quiz).

@@ -91,7 +91,7 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 
 ## Giai đoạn 3 — Quiz
 
-1. Hàm tính `N = clamp(floor(len/130), 3, 10)` + `pytest` (400→3, 650→5, 1300→10, 5000→10).
+1. ✅ Hàm tính `N = clamp(floor(len/130), 3, 10)` + `pytest` (400→3, 650→5, 1300→10, 5000→10). *(2026-11-10: `Config.quiz_question_count()` trong `backend/config.py` + `backend/tests/test_quiz_count.py` — 22 passed, toàn suite 167 passed.)*
 2. `gemini_service.generate_quiz` theo `PROMPTS.md`: validate JSON, xáo trộn đáp án, tính lại `correct_index`, retry 1 lần.
 3. `POST /summaries/{id}/quizzes` (đặt chỗ quota QUIZ, hoàn lại nếu lỗi), `GET /summaries/{id}/quizzes`, `GET /quizzes/{id}`.
 4. `POST /quizzes/{id}/attempts` (server tự chấm), `GET /quizzes/{id}/attempts`.

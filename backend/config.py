@@ -67,6 +67,11 @@ class Config:
         "long": {"ratio": 35, "min_words": 60, "max_words": 450, "min_sentences": 5, "max_sentences": 12},
     }
 
+    # Số câu quiz: N = clamp(floor(ký tự gốc / 130), 3, 10) (SPEC 5.4).
+    QUIZ_QUESTIONS_PER_CHARS = 130
+    QUIZ_QUESTIONS_MIN = 3
+    QUIZ_QUESTIONS_MAX = 10
+
     @classmethod
     def target_words(cls, word_count: int, length: str) -> int:
         """Số từ đích của bản tóm tắt theo mốc length (SPEC 5.1)."""
@@ -80,6 +85,16 @@ class Config:
         policy = cls.LENGTH_POLICIES.get(length) or cls.LENGTH_POLICIES["medium"]
         raw = round(sentence_count * policy["ratio"] / 100)
         return max(policy["min_sentences"], min(policy["max_sentences"], raw))
+
+    @classmethod
+    def quiz_question_count(cls, char_count: int) -> int:
+        """Số câu hỏi quiz cho văn bản gốc `char_count` ký tự đã chuẩn hóa NFC (SPEC 5.4).
+
+        Hàm không kiểm trần 400 ký tự: route chặn bằng `QUIZ_TEXT_TOO_SHORT` trước
+        khi gọi, nên giá trị trả về luôn trong [3, 10] dù đầu vào nhỏ.
+        """
+        raw = char_count // cls.QUIZ_QUESTIONS_PER_CHARS
+        return max(cls.QUIZ_QUESTIONS_MIN, min(cls.QUIZ_QUESTIONS_MAX, raw))
 
     # Chống spam theo IP (SPEC 5.5). Quota nghiệp vụ theo ngày nằm ở bảng usage_quota (GĐ2).
     RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", 30))

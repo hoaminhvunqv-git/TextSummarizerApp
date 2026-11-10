@@ -4,7 +4,7 @@
 
 ## Đang ở
 Giai đoạn 2 **xong cả 7 bước** — backend có lịch sử/mã hóa/quota (2.1–2.6), Flutter có `HistoryView`, `SummaryDetailView` và dòng "còn bao nhiêu lượt hôm nay" (2.7). Việc còn duy nhất của GĐ2 là bấm thử 2 màn mới trên máy thật (cần cáp + `adb reverse tcp:5000 tcp:5000`) — không làm được bằng `flutter analyze`.
-Bước tiếp theo: **Giai đoạn 3 (Quiz)** — bắt đầu bằng 3.1 hàm `N = clamp(floor(len/130), 3, 10)` + `pytest`; nên mở nhánh mới `feature/phase-3-quiz` trước khi code.
+Bước **3.1** (hàm tính số câu quiz) đã xong trên nhánh mới `feature/phase-3-quiz` (mọc từ `feature/phase-2-history-quota` `d3812ab` — hai nhánh đang xếp chồng, merge GĐ2 trước rồi GĐ3 mới gọn). Bước tiếp theo: **3.2** `gemini_service.generate_quiz` theo `PROMPTS.md` (validate JSON, xáo trộn đáp án, tính lại `correct_index`, retry 1 lần).
 Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, nay gộp thêm 2 màn lịch sử của GĐ2.7: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
@@ -107,6 +107,10 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, 
   - Thông báo lỗi lấy `message` thật từ server (theo quy tắc "hết lượt" ≠ "mất kết nối"); chỉ khi không có response mới fallback câu ngoại tuyến.
   - **Chưa kiểm chứng trên máy thật**: `flutter analyze` và test model không chứng minh màn hình vẽ đúng (pull-to-refresh, AlertDialog xác nhận xóa, empty state). Việc này cần cắm cáp + `adb reverse tcp:5000 tcp:5000` rồi `flutter run`, làm cùng lượt với 1C.4.
   - Một test cũ hỏng từ trước, không liên quan 2.7: `mobile/test/widget_test.dart:31` chờ SnackBar "Bộ nhớ tạm chưa có nội dung văn bản" nhưng clipboard đọc bằng platform channel nên không chạy trong `tester.runAsync`. Đã xác minh bằng cách restore 3 file gốc ở HEAD rồi chạy lại — vẫn đúng 1 lỗi đó.
+- Bước 3.1 (2026-11-10, nhánh `feature/phase-3-quiz`): `Config.quiz_question_count(char_count)` trong `backend/config.py` cùng ba hằng `QUIZ_QUESTIONS_PER_CHARS=130`, `QUIZ_QUESTIONS_MIN=3`, `QUIZ_QUESTIONS_MAX=10`; test mới `backend/tests/test_quiz_count.py` → **22 passed**, toàn suite **167 passed, 1 deselected**.
+  - Đặt hàm trong `Config` vì chỗ đó đã có `target_words`/`target_sentences` — cùng loại "suy ra số lượng từ độ dài", và `SPEC.md` mục cây thư mục không khai báo file `quiz_utils.py` mới.
+  - Test phủ 4 mốc DoD (400→3, 650→5, 1300→10, 5000→10), các điểm ngay trước/sau mỗi mốc 130 (519→3, 520→4, 1299→9, 1300→10), trần/đáy kẹp (1430 vẫn 10, 129 vẫn 3), đơn điệu không giảm trên suốt 0–8000 ký tự, và một ca chứng minh `N` đếm theo **ký tự NFC** chứ không theo số mã Unicode (650 ký tự "ấ" tổ hợp = 1950 mã → vẫn 5 câu).
+  - Hàm **không** kiểm trần 400 ký tự: `QUIZ_TEXT_TOO_SHORT` là việc của route ở bước 3.3, nên đầu vào <400 vẫn trả 3 chứ không raise — ghi rõ trong docstring để sau này không ai thêm validate trùng.
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
@@ -228,7 +232,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - Test backend:
   ```bash
   cd backend
-  .\.venv\Scripts\pytest -q            # 145 tests, không gọi API thật, không cần DATABASE_URL
+  .\.venv\Scripts\pytest -q            # 167 tests, không gọi API thật, không cần DATABASE_URL
   .\.venv\Scripts\pytest -m live -v  # chỉ test gọi Gemini thật (tốn quota, cần GEMINI_API_KEY trong .env)
   ```
 - Áp migration lên DB thật (chạy khi mới tạo DB hoặc mỗi lần thêm file trong `database/migrations/`):
