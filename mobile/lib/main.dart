@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme.dart';
+import 'providers/history_provider.dart';
 import 'providers/summary_provider.dart';
 import 'views/home_view.dart';
 
@@ -17,6 +18,7 @@ class TextSummarizerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SummaryProvider()),
+        ChangeNotifierProvider(create: (_) => HistoryProvider()),
       ],
       child: MaterialApp(
         title: 'TextSummarizer AI',

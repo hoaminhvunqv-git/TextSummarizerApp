@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import '../providers/summary_provider.dart';
+import 'history_view.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -22,6 +23,10 @@ class _HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
     _textFocusNode = FocusNode();
+    // Số lượt hôm nay phải lấy từ server: app bị tắt giữa ngày thì không được đoán còn 20.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<SummaryProvider>().loadUsage();
+    });
   }
 
   @override
@@ -53,6 +58,18 @@ class _HomeViewState extends State<HomeView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('TextSummarizer AI'),
+        actions: [
+          IconButton(
+            tooltip: 'Lịch sử tóm tắt',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryView()),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -97,6 +114,9 @@ class _HomeViewState extends State<HomeView> {
 
               // 5. NÚT HÀNH ĐỘNG CHÍNH (VÔ HIỆU HÓA KHI ĐANG XỬ LÝ HOẶC CHƯA ĐỦ ĐIỀU KIỆN)
               _buildSubmitButton(context, provider),
+
+              // 5b. LƯỢT CÒN LẠI HÔM NAY CỦA THIẾT BỊ
+              _buildUsageLine(context, provider),
 
               // 6. HIỂN THỊ KẾT QUẢ TÓM TẮT (NẾU CÓ)
               if (provider.summaryResult != null) ...[
@@ -529,6 +549,39 @@ class _HomeViewState extends State<HomeView> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  /// Số lượt còn lại hôm nay của thiết bị, đọc từ GET /usage và cập nhật theo phản hồi
+  /// của mỗi lần tóm tắt. Chưa đọc được thì ẩn hẳn, không hiện số 0 dễ gây hiểu nhầm.
+  Widget _buildUsageLine(BuildContext context, SummaryProvider provider) {
+    final int? remaining = provider.summaryRemaining;
+    if (remaining == null) return const SizedBox(height: 6);
+
+    final bool exhausted = remaining <= 0;
+    final Color color = exhausted ? AppConstants.errorColor : AppConstants.textSecondaryColor;
+    final String label = exhausted
+        ? 'Hôm nay bạn đã dùng hết lượt tóm tắt. Lượt mới bắt đầu sau nửa đêm.'
+        : 'Hôm nay còn $remaining lượt tóm tắt';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.schedule_rounded, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

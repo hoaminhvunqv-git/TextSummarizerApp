@@ -15,11 +15,16 @@ class SummaryProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   Map<String, dynamic>? _summaryResult;
+  Map<String, dynamic>? _usage; // {summary_remaining, quiz_remaining} từ chính API
 
   String get selectedLength => _selectedLength;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   Map<String, dynamic>? get summaryResult => _summaryResult;
+
+  /// Số lượt còn lại hôm nay; null khi chưa đọc được (mạng lỗi, server chưa có DB).
+  int? get summaryRemaining => _usage?['summary_remaining'] as int?;
+  int? get quizRemaining => _usage?['quiz_remaining'] as int?;
 
   int get charCount => textController.text.trim().length;
 
@@ -225,6 +230,25 @@ class SummaryProvider extends ChangeNotifier {
     }
   }
 
+  /// Đọc lượt còn lại của thiết bị để app không phải đoán 20/20 sau khi app bị tắt giữa ngày.
+  /// Thất bại thì im lặng bỏ trống: thông tin này chỉ là nhãn phụ, không chặn người dùng soạn thảo.
+  Future<void> loadUsage() async {
+    try {
+      final response = await _apiClient.dio.get('/api/v1/usage');
+      final data = response.data;
+      if (data is Map && data['data'] is Map) {
+        final payload = (data['data'] as Map).cast<String, dynamic>();
+        _usage = {
+          'summary_remaining': (payload['summary'] as Map?)?['remaining'],
+          'quiz_remaining': (payload['quiz'] as Map?)?['remaining'],
+        };
+      }
+    } catch (_) {
+      _usage = null;
+    }
+    notifyListeners();
+  }
+
   /// Bắt đầu gửi yêu cầu tóm tắt
   Future<void> summarize() async {
     if (!canSubmit || _isLoading) return;
@@ -244,6 +268,9 @@ class SummaryProvider extends ChangeNotifier {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _summaryResult = response.data['data'] as Map<String, dynamic>;
+        // Response 201 đã mang sẵn usage nên không phải gọi thêm GET /usage.
+        final usage = _summaryResult!['usage'];
+        if (usage is Map) _usage = usage.cast<String, dynamic>();
       } else {
         _errorMessage = response.data['message'] ?? 'Không thể tóm tắt văn bản.';
       }

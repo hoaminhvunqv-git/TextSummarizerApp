@@ -75,7 +75,7 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 4. `services/quota_service.py`: đặt chỗ nguyên tử + hoàn lại (SPEC 5.5), ngày nghiệp vụ theo **offset cố định `+07:00`** (không dùng `ZoneInfo` vì Windows thiếu zone database, xem SPEC 5.5). `GET /usage`.
 5. Cập nhật `POST /summaries`: đặt chỗ quota → xử lý → lưu bản ghi mã hóa (`original_length`, `source`) → hoàn lại quota nếu lỗi. **Cùng bước này bỏ `@limiter.limit("20 per day")` trên route** (giữ 30 request/phút) để không có hai bộ đếm cùng chặn `/summaries`; `POST /ocr` vẫn dùng limiter của GĐ1.5 vì ràng buộc `usage_type` trong schema chỉ nhận `SUMMARY`/`QUIZ`.
 6. `GET /summaries` (phân trang), `GET /summaries/{id}`, `DELETE /summaries/{id}` — **có kiểm tra quyền sở hữu** (device/user), không thuộc → `NOT_FOUND`.
-7. Flutter: HistoryView (pull-to-refresh, empty state, xóa), SummaryDetailView, hiển thị lượt còn lại.
+7. ✅ Flutter: HistoryView (pull-to-refresh, empty state, xóa), SummaryDetailView, hiển thị lượt còn lại. *(2026-11-10: `mobile/lib/views/history_view.dart`, `summary_detail_view.dart`, `providers/history_provider.dart`, `models/history_models.dart`; `flutter analyze` sạch, 4 test model mới đạt. Chưa kiểm tra trên máy thật.)*
 
 ### ✅ DoD Giai đoạn 2
 - [x] Xem trực tiếp bảng `summaries` trên dashboard: các cột `*_enc` là chuỗi base64 khó đọc, không có plaintext. *(2026-11-10: `SELECT` bản ghi thật vừa ghi — 4 cột base64, giải mã bằng `ENCRYPTION_KEY` ra đúng nội dung, `original_length=1272`; dòng test đã xóa sau khi kiểm.)*
@@ -85,7 +85,7 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 - [x] Xóa 1 bản tóm tắt → biến mất khỏi DB. *(2026-11-10: `DELETE /summaries/2` (đúng chủ) → 200 `{"deleted": true}`, `SELECT COUNT(*) WHERE id=2` = 0; xóa lại → 404.)*
 - [x] Log server không chứa nội dung văn bản. *(2026-11-10: log chỉ `length=1272 | time=10.55s | source`, handler 500 chỉ ghi tên exception.)*
 - [x] `pytest` (crypto, validators) xanh. *(2026-11-10: 145 passed, 1 deselected.)*
-- Ghi chú: 7/7 DoD phía backend đã đạt từ bước 2.6. Còn **bước 7** (Flutter: HistoryView, SummaryDetailView, hiển thị lượt còn lại) mới khép Giai đoạn 2.
+- Ghi chú: 7/7 DoD phía backend đã đạt từ bước 2.6. Bước 7 (Flutter) đã có mã ở GĐ2.7 — **còn một việc chưa đóng được: xác nhận HistoryView/SummaryDetailView chạy đúng trên máy thật** (pull-to-refresh, xóa, empty state, dòng lượt còn lại). Đây là kiểm tra thủ công, cần cáp + `adb reverse`, không làm bằng `flutter analyze` hay test model.
 
 ---
 

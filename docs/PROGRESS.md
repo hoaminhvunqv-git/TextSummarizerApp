@@ -3,8 +3,9 @@
 > AI cập nhật file này sau MỖI bước xong, trước khi đề xuất commit.
 
 ## Đang ở
-Giai đoạn 2 (lịch sử + mã hóa + quota) — bước 2.1–2.6 xong, **7/7 DoD phía backend đã đạt**: lịch sử đọc/chi tiết/xóa có kiểm tra quyền sở hữu, quota và bản ghi mã hóa đều nằm trong `usage_quota`/`summaries`. Bước tiếp theo: **2.7** Flutter `HistoryView` (pull-to-refresh, empty state, xóa), `SummaryDetailView`, hiển thị lượt còn lại — đây là bước cuối của GĐ2.
-Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
+Giai đoạn 2 **xong cả 7 bước** — backend có lịch sử/mã hóa/quota (2.1–2.6), Flutter có `HistoryView`, `SummaryDetailView` và dòng "còn bao nhiêu lượt hôm nay" (2.7). Việc còn duy nhất của GĐ2 là bấm thử 2 màn mới trên máy thật (cần cáp + `adb reverse tcp:5000 tcp:5000`) — không làm được bằng `flutter analyze`.
+Bước tiếp theo: **Giai đoạn 3 (Quiz)** — bắt đầu bằng 3.1 hàm `N = clamp(floor(len/130), 3, 10)` + `pytest`; nên mở nhánh mới `feature/phase-3-quiz` trước khi code.
+Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở, nay gộp thêm 2 màn lịch sử của GĐ2.7: `R58W70JJ0JF` đã hiện lại trong `adb devices`, tunnel `adb reverse` phải lập lại sau mỗi lần cắm/rút cáp.
 
 ## Đã xong
 - Bước 0: .gitignore, CLAUDE.md, docs/, testdata/, schema.sql, .env, .env.example
@@ -100,11 +101,18 @@ Giai đoạn 1C.4 (kiểm thử end-to-end trên máy thật) vẫn đang mở: 
     curl -s -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" -H "X-App-Version: 1.0.0" "http://127.0.0.1:5000/api/v1/summaries?page=1&limit=20"
     curl -s -X DELETE -H "X-Device-ID: 3f2504e0-4f89-41d3-9a0c-0305e82c3301" -H "X-App-Version: 1.0.0" http://127.0.0.1:5000/api/v1/summaries/2
     ```
+- Bước 2.7 (2026-11-10): Flutter lịch sử — 4 file mới `mobile/lib/models/history_models.dart`, `mobile/lib/providers/history_provider.dart`, `mobile/lib/views/history_view.dart`, `mobile/lib/views/summary_detail_view.dart`; sửa `main.dart` (đăng ký `HistoryProvider`), `home_view.dart` (nút lịch sử trên AppBar + dòng lượt còn lại), `summary_provider.dart` (`loadUsage()`, đọc khối `usage` trả về kèm bản tóm tắt). Test mới: `mobile/test/history_models_test.dart` (**4 passed**). `flutter analyze` → "No issues found!". **Khép Giai đoạn 2 về mặt mã nguồn.**
+  - Tên khóa JSON trong `history_models.dart` không đoán từ docs: chạy backend thật + script bắt payload rồi ghi lại đúng những gì server trả — `item: [created_at, description, id, language, source, title]`, `detail: [..., original_length, original_text, summary, usage]`, `created_at` dạng `2026-11-10T19:36:00+07:00` (`DateTime.parse` giữ đúng thời điểm tuyệt đối, test số 2 chốt điều này).
+  - Lịch sử tải bằng `page`/`limit=20`, kéo lên gần đáy tự nạp trang sau; lỗi mạng giữ nguyên danh sách đã có chứ không xoá trắng. Đọc/xóa lịch sử **không** chạm quota — backend không đặt chỗ khi GET/DELETE, và Flutter cũng không hiển thị số liệu tự tính.
+  - Thông báo lỗi lấy `message` thật từ server (theo quy tắc "hết lượt" ≠ "mất kết nối"); chỉ khi không có response mới fallback câu ngoại tuyến.
+  - **Chưa kiểm chứng trên máy thật**: `flutter analyze` và test model không chứng minh màn hình vẽ đúng (pull-to-refresh, AlertDialog xác nhận xóa, empty state). Việc này cần cắm cáp + `adb reverse tcp:5000 tcp:5000` rồi `flutter run`, làm cùng lượt với 1C.4.
+  - Một test cũ hỏng từ trước, không liên quan 2.7: `mobile/test/widget_test.dart:31` chờ SnackBar "Bộ nhớ tạm chưa có nội dung văn bản" nhưng clipboard đọc bằng platform channel nên không chạy trong `tester.runAsync`. Đã xác minh bằng cách restore 3 file gốc ở HEAD rồi chạy lại — vẫn đúng 1 lỗi đó.
 
 ## Đang dở / bước tiếp theo
 - 1.5.a (việc của người dùng): tạo Render Web Service từ `render.yaml`, điền `GEMINI_API_KEY` trong dashboard, xác nhận `curl https://<app>.onrender.com/health` → 200.
 - 1.5.b (việc của người dùng): `flutter build apk --release --split-per-abi --dart-define=BASE_URL=https://<app>.onrender.com`, cài lên máy thứ hai ở 4G và test cả 3 luồng nhập liệu.
 - 1C.4: Kiểm thử end-to-end trên máy Android thật (3 luồng nhập liệu, mốc Ngắn/Vừa/Dài có khoá, SnackBar kết quả). Lưu ý: `R58W70JJ0JF` đã hiện lại; mỗi lần cắm/rút cáp phải chạy lại `adb reverse tcp:5000 tcp:5000` vì tunnel bị xoá, app sẽ báo "chưa thể kết nối tới máy chủ AI" nếu quên.
+- 2.7b (cùng lượt với 1C.4, việc của người dùng vì cần máy thật): mở app → bấm nút Lịch sử trên AppBar, kiểm danh sách có bản ghi vừa tóm tắt, kéo thả trang để refresh, cuộn hết trang 20 để nạp trang sau, mở chi tiết (văn bản gốc + "Xem thêm"), xóa có hộp xác nhận, quay lại Home thấy dòng "Hôm nay còn N lượt tóm tắt" giảm đi 1. Empty state và màn lỗi ngoại tuyến (tắt server) cũng nằm trong lượt kiểm này.
 
 ## Thay đổi thiết kế (2026-11-07)
 - **OCR: ML Kit on-device → Gemini Vision API**
@@ -197,6 +205,7 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
 - **Trần 20 lượt/ngày của Google tính theo API key, không theo người dùng.** Giới hạn `X-Device-ID` ở app chỉ ngăn một người đốt bừa; tổng sức chứa vẫn là 20 bản tóm tắt/ngày cho **toàn bộ** user nếu key chưa bật billing. Muốn phục vụ nhiều người thật phải bật billing trên Google Cloud project của key (quyết định tiền của người dùng).
 - **Bộ đếm 20/ngày nằm trong RAM — chỉ còn đúng với `/ocr`**: Render free ngủ khi vắng khách, mỗi lần thức dậy hoặc restart là `Flask-Limiter` quên hết → thiết bị được hoàn lượt. `/summaries` đã thoát khỏi đánh đổi này từ bước 2.5 (đếm trong `usage_quota`, nửa đêm +07, đặt chỗ nguyên tử); `/ocr` còn cho tới khi `usage_type` nhận thêm OCR ở GĐ3.
 - **`POST /summaries`, `GET /summaries*` và `GET /usage` cần `DATABASE_URL`**: để trống thì app vẫn boot (`/health`, `/api/v1/config` vẫn 200 — cố ý, giữ bất biến deploy được ở mọi giai đoạn) nhưng các route DB trả 500 `INTERNAL_ERROR` ngay lần gọi đầu tiên, không trả dữ liệu rỗng giả. Deploy GĐ2 trở đi mà quên biến này là toàn bộ luồng tóm tắt chết, không phải chỉ lịch sử.
+- **`flutter test` (chạy toàn bộ) luôn đỏ 1 case có sẵn từ trước, không phải do code mới**: `mobile/test/widget_test.dart:31` gõ "Dán chữ" rồi chờ SnackBar "Bộ nhớ tạm chưa có nội dung văn bản", nhưng `pasteFromClipboard()` đọc clipboard qua platform channel nên `await` không bao giờ hoàn tất khi chỉ dùng `pump()` — phải bọc `tester.runAsync`. Đã kiểm chứng bằng cách tạm restore 3 file ở HEAD rồi chạy lại: vẫn đúng 1 lỗi đó. Khi cần test code mới, chạy từng file (`flutter test test/history_models_test.dart`) hoặc sửa `widget_test.dart` như một việc riêng.
 - **Cold start 30–60s**: request đầu tiên sau thời gian vắng hay timeout nếu Dio đặt dưới 60s; UX "Đang đánh thức máy chủ..." (SPEC 2.3) là hành vi đúng, không phải lỗi kết nối.
 - **`--bind 0.0.0.0:$PORT` trong `startCommand` là bắt buộc**: `app.py` chỉ đọc `PORT` khi chạy `app.run()`, còn gunicorn bỏ qua lệnh đó → thiếu `--bind` thì Render báo "Application failed to respond".
 - **Key JSON trong body `/summaries` là `length`, không phải `selected_length`**: backend bỏ qua key lạ và dùng mặc định `medium`, nên nếu script test gõ nhầm thì ngưỡng mở khoá bị check sai (ra 1000 ký tự thay vì 2000) và rất dễ kết luận nhầm "khoá mốc `long` bị lỗi". Ngày 2026-11-09 đã vấp đúng ca này khi tự viết script curl; code và docs đều đúng, lỗi ở script.
@@ -235,7 +244,9 @@ Tất cả gọi vào server đang chạy cổng 5000, header `X-Device-ID` (UUI
   ```bash
   cd mobile
   flutter analyze
+  flutter test test/history_models_test.dart   # 4 passed — kiểm model lịch sử/chi tiết khớp JSON thật
   ```
+  Tránh `flutter test` không kèm đường dẫn khi chỉ muốn xác nhận code mới: nó sẽ chạy luôn `widget_test.dart` và báo 1 lỗi cũ đã ghi ở mục "Lỗi đã biết".
 - Chạy app Flutter trên thiết bị/emulator:
   ```bash
   cd mobile
