@@ -99,12 +99,12 @@ Mục tiêu: có APK cài trên máy khác ở mạng khác dùng được **nga
 
 ### ✅ DoD Giai đoạn 3
 - [x] Văn bản gốc < 400 ký tự → `QUIZ_TEXT_TOO_SHORT`, không tốn quota. *(2026-11-10, Neon thật: bản 399 ký tự → 400 `QUIZ_TEXT_TOO_SHORT` "Văn bản quá ngắn để tạo quiz (cần ít nhất 400 ký tự).", `usage_quota.quiz` vẫn `used: 0 / remaining: 20` và `COUNT(*) FROM quiz_sessions` = 0 — chặn trước khi đặt chỗ nên không có gì để hoàn.)*
-- [ ] Văn bản ~650 ký tự → đúng 5 câu; văn bản ≥ 1300 → 10 câu; mỗi câu 4 đáp án khác nhau.
-- [ ] Vị trí đáp án đúng phân bố ngẫu nhiên giữa A–D qua nhiều lần tạo.
-- [ ] Tắt/sai Gemini key → quiz trả `AI_UNAVAILABLE` (503) + quota được hoàn lại; app hiện thông báo thân thiện.
+- [x] Văn bản ~650 ký tự → đúng 5 câu; văn bản ≥ 1300 → 10 câu; mỗi câu 4 đáp án khác nhau. *(2026-11-11, Neon + Gemini thật: bản gốc 680 ký tự → 5 câu ở cả 2 lần tạo (15,0s / 9,7s), bản 1320 ký tự → 10 câu (19,9s — lần thử 1 dính 503 từ Gemini và retry thành công); cả 20 câu đều đủ 4 đáp án khác nhau.)*
+- [x] Vị trí đáp án đúng phân bố ngẫu nhiên giữa A–D qua nhiều lần tạo. *(2026-11-11, 20 câu từ 3 lần tạo: A=3, B=6, C=8, D=3 — cả bốn vị trí đều xuất hiện.)*
+- [x] Tắt/sai Gemini key → quiz trả `AI_UNAVAILABLE` (503) + quota được hoàn lại; app hiện thông báo thân thiện. *(2026-11-11, key sai đè qua env ở tiến trình thứ 2: 2 lần thử đều ClientError → 503 `AI_UNAVAILABLE` "Tính năng tạo quiz tạm thời không khả dụng. Vui lòng thử lại sau.", `usage.quiz.used` 0 → 0 và `COUNT(quiz_sessions)` 0 → 0; app hiện đúng message server qua `_messageOf` của `QuizProvider`.)*
 - [x] Nộp bài: sửa tay điểm trong request không ảnh hưởng (server tự tính); điểm lưu đúng thang 10. *(2026-11-10, Neon thật: bài sai toàn bộ kèm `"score": 10.0, "correct_count": 9, "results":[…]` giả → server trả và lưu `score = 0.0`; 3 lần nộp cho cùng quiz ra 10.0 / 0.0 / 8.9 đúng công thức.)*
 - [x] Xóa bản tóm tắt → quiz/câu hỏi/lượt làm liên quan bị xóa theo. *(2026-11-10, Neon thật: `DELETE /summaries/13` → `SELECT COUNT(*) FROM quiz_attempts WHERE quiz_session_id=4` = 0; GĐ3.3 đã đo `quiz_questions` cũng hết qua CASCADE.)*
-- Ghi chú: ba dòng còn lại chờ đúng một thứ — **hạn mức Gemini của key** (20 request/ngày, cộng chung mọi tính năng, cạn lúc 20:39 ngày 2026-11-10) và **máy thật**. Dòng 2 và 3 cần vài lời gọi sinh quiz liên tiếp; dòng 4 cần chạy app với key sai để xem SnackBar, phần server (503 + hoàn lượt) đã đo ở bước 3.2/3.3. Code GĐ3 đã xong cả 5 bước.
+- Ghi chú: **DoD GĐ3 đã đóng đủ** bằng Neon + Gemini thật ngày 2026-11-11 (script tạm, đã xóa). Còn duy nhất **3.5b** — bấm thật trên máy Android (gộp chung lượt với 1C.4 và 2.7b), không thay được bằng test tự động.
 
 ---
 
