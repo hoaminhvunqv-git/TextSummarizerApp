@@ -154,6 +154,7 @@ TextSummarizerAI/
   - Nút **Tạo quiz mới** nằm ở card *Trắc nghiệm* trong màn chi tiết tóm tắt, tắt khi văn bản gốc dưới 400 ký tự và hiện "Đang tạo quiz, khoảng 30 giây..." trong lúc chờ; quiz đã có liệt kê ngay bên dưới để mở lại **không tốn lượt**.
   - Làm bài theo từng câu: chọn A–D là biết đúng/sai **ngay tại máy** kèm giải thích, có nút **Bỏ qua câu này** (server tính là sai). Đã chọn thì khoá câu đó, đổi ý sẽ lệch với mảng nộp đi.
   - Điểm trên màn kết quả là điểm **server chấm** (`POST /quizzes/{id}/attempts`), không phải điểm app tự cộng; nút **Làm lại** xoá sạch đáp án tại chỗ và nộp thành một lượt mới.
+  - Màn kết quả có mục **"Các lần làm trước"** (`GET /quizzes/{id}/attempts`, gọi ngay sau khi nộp): điểm thang 10 + số câu đúng + thời điểm từng lượt cũ, lượt vừa nộp bị loại vì đã hiển thị đầy đủ phía trên. Lỗi tải chỉ ẩn mục này đi, không chặn màn điểm và không hiện SnackBar.
   - Riêng lời gọi tạo quiz dùng `receiveTimeout` **150s** thay vì 60s mặc định của Dio: `GEMINI_QUIZ_TIMEOUT_SECONDS=30` cộng 1 lần retry là kịch bản xấu chạm trần 60s (đo thật 2026-11-10: 54,6s và 59,1s).
 
 ---

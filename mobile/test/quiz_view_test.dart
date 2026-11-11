@@ -128,12 +128,17 @@ void main() {
           submittedAt: DateTime.utc(2026, 11, 10, 13, 55, 36),
         );
 
-    Future<void> pumpResult(WidgetTester tester, {required VoidCallback onRestart}) async {
+    Future<void> pumpResult(
+      WidgetTester tester, {
+      required VoidCallback onRestart,
+      List<AttemptHistoryItem> pastAttempts = const <AttemptHistoryItem>[],
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           home: QuizResultView(
             quiz: buildQuiz(count: 3),
             result: buildResult9(),
+            pastAttempts: pastAttempts,
             onRestart: onRestart,
           ),
         ),
@@ -167,6 +172,42 @@ void main() {
       await tester.pump();
 
       expect(restarts, 1);
+    });
+
+    testWidgets('lần đầu làm bài thì ẩn mục "Các lần làm trước"', (tester) async {
+      await pumpResult(tester, onRestart: () {});
+
+      expect(find.text('Các lần làm trước'), findsNothing);
+    });
+
+    testWidgets('hiện các lần làm trước kèm điểm, lượt vừa nộp đã bị loại', (tester) async {
+      await pumpResult(
+        tester,
+        onRestart: () {},
+        pastAttempts: <AttemptHistoryItem>[
+          AttemptHistoryItem(
+            id: 2,
+            score: 6.7,
+            correctCount: 6,
+            totalCount: 9,
+            submittedAt: DateTime.utc(2026, 11, 10, 14, 2, 11),
+          ),
+          AttemptHistoryItem(
+            id: 1,
+            score: 10,
+            correctCount: 9,
+            totalCount: 9,
+            submittedAt: DateTime.utc(2026, 11, 10, 13, 55, 36),
+          ),
+        ],
+      );
+
+      expect(find.text('Các lần làm trước'), findsOneWidget);
+      expect(find.text('6.7/10'), findsOneWidget);
+      expect(find.text('10.0/10'), findsOneWidget);
+      expect(find.text('Đúng 6/9 câu'), findsOneWidget);
+      // "Đúng 8/9 câu" của lượt vừa nộp nằm ở header điểm, không nằm trong mục lịch sử.
+      expect(find.text('Đúng 9/9 câu'), findsOneWidget);
     });
   });
 }

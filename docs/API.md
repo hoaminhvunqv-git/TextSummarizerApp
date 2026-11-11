@@ -192,7 +192,7 @@ Server **tự chấm, không tin client**: mọi trường `score` / `correct_co
 ```
 Toàn bộ lượt làm bài của một quiz, mới nhất trước (`submitted_at DESC, id DESC`). Trang này **không** kèm `answers` hay `results`: muốn xem lại chi tiết từng câu thì nộp lại bài. Chưa làm lần nào → 200 với `items: []`; quiz không thuộc người gọi hoặc id không phải số → 404 `NOT_FOUND` ("Không tìm thấy quiz này."). Đọc lịch sử **không** trừ lượt.
 
-> Trạng thái app (2026-11-10): màn làm bài hiển thị recap của **chính lần nộp vừa xong** lấy từ response 201, nên endpoint này chưa có màn nào gọi tới — để dành cho màn thống kê ở GĐ4. Đường dẫn và shape đã kiểm khớp với `app.url_map`.
+> Trạng thái app (2026-11-11): mục **"Các lần làm trước"** ở màn kết quả quiz gọi endpoint này ngay sau khi nộp bài, lọc bỏ lượt vừa nộp rồi liệt kê điểm + thời điểm (mới nhất trước). Lỗi tải chỉ làm ẩn mục, không chặn màn điểm. Đường dẫn và shape đã kiểm khớp với `app.url_map`.
 
 ### POST `/auth/register`
 ```json

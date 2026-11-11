@@ -156,6 +156,34 @@ class AttemptResult {
   }
 }
 
+/// Một dòng trong `GET /quizzes/{id}/attempts`: điểm một lần làm trước của quiz.
+/// Server trả mới nhất trước và không kèm đáp án đã mã hoá.
+class AttemptHistoryItem {
+  const AttemptHistoryItem({
+    required this.id,
+    required this.score,
+    required this.correctCount,
+    required this.totalCount,
+    required this.submittedAt,
+  });
+
+  final int id;
+
+  /// Thang 10, một chữ số thập phân; cột `real` của Neon nên JSON có thể ra int.
+  final double score;
+  final int correctCount;
+  final int totalCount;
+  final DateTime submittedAt;
+
+  factory AttemptHistoryItem.fromJson(Map<String, dynamic> json) => AttemptHistoryItem(
+        id: _int(json['id']) ?? 0,
+        score: (json['score'] as num?)?.toDouble() ?? 0,
+        correctCount: _int(json['correct_count']) ?? 0,
+        totalCount: _int(json['total_count']) ?? 0,
+        submittedAt: DateTime.parse(json['submitted_at'] as String),
+      );
+}
+
 Map<String, dynamic>? _usage(Map<String, dynamic> json) {
   final usage = json['usage'];
   return usage is Map ? usage.cast<String, dynamic>() : null;

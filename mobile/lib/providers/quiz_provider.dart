@@ -116,6 +116,26 @@ class QuizProvider extends ChangeNotifier {
     }
   }
 
+  /// `GET /quizzes/{id}/attempts` — điểm các lần làm trước, mới nhất trước,
+  /// cho mục "Các lần làm trước" ở màn kết quả. Phần này chỉ là phụ nên lỗi
+  /// trả danh sách rỗng để ẩn mục đi; **không** đặt `errorMessage` vì màn kết
+  /// quả không lắng nghe nó và thông báo cũ sẽ lèo sang hành động kế tiếp.
+  Future<List<AttemptHistoryItem>> loadAttempts(int quizId) async {
+    try {
+      final data = _unwrap(await _apiClient.dio.get('/api/v1/quizzes/$quizId/attempts'));
+      final raw = data['items'];
+      if (raw is! List) return const <AttemptHistoryItem>[];
+      return raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map((json) => AttemptHistoryItem.fromJson(json.cast<String, dynamic>()))
+          .toList(growable: false);
+    } on DioException {
+      return const <AttemptHistoryItem>[];
+    } on QuizFormatException {
+      return const <AttemptHistoryItem>[];
+    }
+  }
+
   Map<String, dynamic> _unwrap(Response<dynamic> response) {
     final body = response.data;
     if (body is! Map) throw const QuizFormatException();

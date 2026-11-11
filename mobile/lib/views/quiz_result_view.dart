@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../core/constants.dart';
 import '../models/quiz_models.dart';
 
@@ -12,11 +13,15 @@ class QuizResultView extends StatelessWidget {
     required this.quiz,
     required this.result,
     required this.onRestart,
+    this.pastAttempts = const <AttemptHistoryItem>[],
   });
 
   final Quiz quiz;
   final AttemptResult result;
   final VoidCallback onRestart;
+
+  /// Các lần làm trước của quiz này (đã loại lượt vừa nộp); rỗng = ẩn mục.
+  final List<AttemptHistoryItem> pastAttempts;
 
   @override
   Widget build(BuildContext context) {
@@ -51,20 +56,38 @@ class QuizResultView extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ListView.separated(
+          child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            itemCount: result.results.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final item = result.results[index];
-              // `results` và `questions` cùng độ dài vì server chấm đúng số câu của quiz.
-              final question = index < quiz.questions.length ? quiz.questions[index] : null;
-              return _ResultTile(
-                item: item,
-                question: question?.question ?? 'Câu ${item.position}',
-                options: question?.options ?? const <String>[],
-              );
-            },
+            children: [
+              for (var i = 0; i < result.results.length; i++) ...[
+                // `results` và `questions` cùng độ dài vì server chấm đúng số câu của quiz.
+                _ResultTile(
+                  item: result.results[i],
+                  question: i < quiz.questions.length
+                      ? quiz.questions[i].question
+                      : 'Câu ${result.results[i].position}',
+                  options: i < quiz.questions.length
+                      ? quiz.questions[i].options
+                      : const <String>[],
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (pastAttempts.isNotEmpty) ...[
+                Text(
+                  'Các lần làm trước',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final attempt in pastAttempts) ...[
+                  _PastAttemptTile(attempt: attempt),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ],
           ),
         ),
         Padding(
@@ -146,6 +169,48 @@ class _ResultTile extends StatelessWidget {
                 style: const TextStyle(fontSize: 13, color: AppConstants.successColor),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Một dòng lịch sử: điểm gần nhất nằm trên cùng vì server trả mới nhất trước.
+class _PastAttemptTile extends StatelessWidget {
+  const _PastAttemptTile({required this.attempt});
+
+  final AttemptHistoryItem attempt;
+
+  static final DateFormat _dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Text(
+              '${attempt.score.toStringAsFixed(1)}/10',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppConstants.primaryColor,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Đúng ${attempt.correctCount}/${attempt.totalCount} câu',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              ),
+            ),
+            Text(
+              _dateFormat.format(attempt.submittedAt),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
           ],
         ),
       ),

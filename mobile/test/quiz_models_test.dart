@@ -158,4 +158,36 @@ void main() {
       expect(perfect.score, 10.0);
     });
   });
+
+  group('AttemptHistoryItem.fromJson', () {
+    // Shape chép từ smoke GĐ3.4 trên Neon thật: GET /quizzes/{id}/attempts
+    // -> {items: [...]} và server đã sắp mới nhất trước.
+    test('đọc điểm một lần làm trước', () {
+      final item = AttemptHistoryItem.fromJson(const <String, dynamic>{
+        'id': 3,
+        'score': 8.9,
+        'correct_count': 8,
+        'total_count': 9,
+        'submitted_at': '2026-11-10T21:02:11+07:00',
+      });
+
+      expect(item.id, 3);
+      expect(item.score, 8.9);
+      expect(item.correctCount, 8);
+      expect(item.totalCount, 9);
+      expect(item.submittedAt.toUtc(), DateTime.utc(2026, 11, 10, 14, 2, 11));
+    });
+
+    test('điểm 10.0 trong cột real có thể về JSON dạng số nguyên', () {
+      final item = AttemptHistoryItem.fromJson(const <String, dynamic>{
+        'id': 1,
+        'score': 10,
+        'correct_count': 9,
+        'total_count': 9,
+        'submitted_at': '2026-11-10T20:55:36+07:00',
+      });
+
+      expect(item.score, 10.0);
+    });
+  });
 }

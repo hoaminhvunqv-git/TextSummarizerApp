@@ -27,6 +27,9 @@ class _QuizViewState extends State<QuizView> {
   bool _isSubmitting = false;
   AttemptResult? _result;
 
+  /// Các lần làm trước của quiz này (đã loại lượt vừa nộp); rỗng = lần đầu hoặc lỗi tải.
+  List<AttemptHistoryItem> _pastAttempts = const <AttemptHistoryItem>[];
+
   Quiz get _quiz => widget.quiz;
   int get _total => _quiz.questions.length;
 
@@ -83,6 +86,16 @@ class _QuizViewState extends State<QuizView> {
       return;
     }
     setState(() => _result = result);
+
+    // Lịch sử chỉ là phần phụ: tải sau khi điểm đã hiện nên lỗi mạng chỉ làm
+    // ẩn mục đi, không chặn màn kết quả (provider không đặt errorMessage).
+    final attempts = await provider.loadAttempts(_quiz.id);
+    if (!mounted) return;
+    setState(() {
+      _pastAttempts = attempts
+          .where((attempt) => attempt.id != result.attemptId)
+          .toList(growable: false);
+    });
   }
 
   /// Làm lại tại chỗ: một lượt nộp mới là một dòng `quiz_attempts` và không tốn lượt quiz.
@@ -104,7 +117,12 @@ class _QuizViewState extends State<QuizView> {
     return Scaffold(
       appBar: AppBar(title: Text(result == null ? 'Làm quiz' : 'Kết quả')),
       body: result != null
-          ? QuizResultView(quiz: _quiz, result: result, onRestart: _restart)
+          ? QuizResultView(
+              quiz: _quiz,
+              result: result,
+              pastAttempts: _pastAttempts,
+              onRestart: _restart,
+            )
           : _buildQuestion(),
     );
   }
