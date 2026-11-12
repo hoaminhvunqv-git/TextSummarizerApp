@@ -45,6 +45,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("text_summarizer")
 
+# Flask-Limiter log tên rule + scope của mỗi request bị chặn, và scope của ta chứa
+# X-Device-ID — credential duy nhất của người dùng. Không để nó vào log Render.
+logging.getLogger("flask_limiter").setLevel(logging.WARNING)
+
 
 def _limit_granularity(err) -> str:
     """Trả về 'day'/'minute'/... của giới hạn Flask-Limiter vừa chạm trần, hoặc '' nếu không phải."""
@@ -132,7 +136,9 @@ def create_app(config_class=Config) -> Flask:
     @app.errorhandler(Exception)
     def handle_unexpected_exception(err: Exception):
         """Bắt mọi ngoại lệ không lường trước: ghi log loại lỗi (không log dữ liệu nhạy cảm) và trả về 500."""
-        logger.error(f"Lỗi không lường trước: {type(err).__name__}: {str(err)}")
+        # Chỉ log tên lớp: thông báo của psycopg2 có DETAIL trích lại tham số (văn bản
+        # người dùng / ciphertext), còn message của SDK Gemini copy lại một phần tài liệu.
+        logger.error(f"Lỗi không lường trước: {type(err).__name__}")
         return error_response(
             error_code=ErrorCode.INTERNAL_ERROR,
             message="Đã có lỗi xảy ra. Vui lòng thử lại.",

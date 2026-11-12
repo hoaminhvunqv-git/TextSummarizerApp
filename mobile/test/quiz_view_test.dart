@@ -77,6 +77,29 @@ void main() {
       expect(find.text('Đã trả lời 1/3'), findsOneWidget);
     });
 
+    testWidgets('server không gửi correct_index thì không bịa chữ cái đáp án đúng', (tester) async {
+      await pumpQuiz(
+        tester,
+        Quiz(
+          id: 4,
+          summaryId: 13,
+          language: 'vi',
+          createdAt: DateTime.utc(2026, 11, 10, 13, 55, 36),
+          questions: <QuizQuestion>[buildQuestion(1, -1)],
+        ),
+      );
+
+      await tester.tap(find.text('Đáp án A'));
+      await tester.pump();
+
+      // `optionLetter(-1)` cho ra chữ "@" — màn hình từng in nó như thể đó là đáp án.
+      expect(find.textContaining('@'), findsNothing);
+      expect(
+        find.text('Chưa đúng — máy chủ không trả đáp án đúng cho câu này'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('bỏ trống vẫn mở giải thích nhưng không tính là đã trả lời', (tester) async {
       await pumpQuiz(tester, buildQuiz());
 

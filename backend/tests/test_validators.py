@@ -214,3 +214,27 @@ def test_validate_quiz_answers_rejects_shapes_that_would_silently_misgrade(answe
 
     assert excinfo.value.error_code == ErrorCode.VALIDATION_ERROR
     assert expected_message_part in excinfo.value.message
+
+
+def test_device_id_is_canonicalised_so_case_cannot_double_the_quota():
+    """`d:UPPER` và `d:lower` mà cùng được chấp nhận thì thành hai owner_key,
+    tức một người đổi hoa/thường là được gấp đôi lượt trong `usage_quota`."""
+    raw = str(uuid.uuid4())
+    upper = raw.upper()
+
+    assert validate_device_id(upper) == raw
+    assert validate_device_id(upper) == validate_device_id(raw)
+    assert validate_device_id(f"  {upper}  ") == raw
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "1.0", "1", "1.0.5", "2.0.0", "1.0.0+3", "1.2.3.4"])
+def test_app_versions_that_are_not_older_must_not_get_426(version):
+    """Tuple ngắn hơn luôn nhỏ hơn tuple dài hơn, nên '1.0' từng bị coi là cũ."""
+    assert validate_app_version(version) == version.strip()
+
+
+@pytest.mark.parametrize("version", ["0.9", "0.9.9"])
+def test_genuinely_old_app_versions_still_get_426(version):
+    with pytest.raises(AppError) as excinfo:
+        validate_app_version(version)
+    assert excinfo.value.status_code == 426

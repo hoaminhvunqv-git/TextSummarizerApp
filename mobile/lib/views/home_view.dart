@@ -191,6 +191,7 @@ class _HomeViewState extends State<HomeView> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(provider.errorMessage!),
+                              backgroundColor: AppConstants.errorColor,
                               duration: const Duration(seconds: 3),
                               behavior: SnackBarBehavior.floating,
                             ),
@@ -554,31 +555,49 @@ class _HomeViewState extends State<HomeView> {
   }
 
   /// Số lượt còn lại hôm nay của thiết bị, đọc từ GET /usage và cập nhật theo phản hồi
-  /// của mỗi lần tóm tắt. Chưa đọc được thì ẩn hẳn, không hiện số 0 dễ gây hiểu nhầm.
+  /// của mỗi lần tóm tắt. Có ba trạng thái hiển thị: đang đọc / chưa đọc được / còn N.
+  /// Không bao giờ ẩn im lặng: người dùng cần biết là app chưa lấy được con số, vì
+  /// một dòng trống trông hệt như "còn rất nhiều lượt".
   Widget _buildUsageLine(BuildContext context, SummaryProvider provider) {
     final int? remaining = provider.summaryRemaining;
-    if (remaining == null) return const SizedBox(height: 6);
+    final String label;
+    final Color color;
+    final IconData icon;
 
-    final bool exhausted = remaining <= 0;
-    final Color color = exhausted ? AppConstants.errorColor : AppConstants.textSecondaryColor;
-    final String label = exhausted
-        ? 'Hôm nay bạn đã dùng hết lượt tóm tắt. Lượt mới bắt đầu sau nửa đêm.'
-        : 'Hôm nay còn $remaining lượt tóm tắt';
+    if (provider.isReadingUsage) {
+      label = 'Đang kiểm tra lượt còn lại hôm nay...';
+      color = AppConstants.textSecondaryColor;
+      icon = Icons.schedule_rounded;
+    } else if (remaining == null) {
+      label = 'Chưa đọc được lượt còn lại hôm nay.';
+      color = AppConstants.textSecondaryColor;
+      icon = Icons.info_outline_rounded;
+    } else if (remaining <= 0) {
+      label = 'Hôm nay bạn đã dùng hết lượt tóm tắt. Lượt mới bắt đầu sau nửa đêm.';
+      color = AppConstants.errorColor;
+      icon = Icons.schedule_rounded;
+    } else {
+      label = 'Hôm nay còn $remaining lượt tóm tắt';
+      color = AppConstants.textSecondaryColor;
+      icon = Icons.schedule_rounded;
+    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.schedule_rounded, size: 15, color: color),
+          Icon(icon, size: 15, color: color),
           const SizedBox(width: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: color,
+          Expanded(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
             ),
           ),
         ],
@@ -659,7 +678,14 @@ class _HomeViewState extends State<HomeView> {
   void _showImageSourceSheet(BuildContext context, SummaryProvider provider) {
     showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext sheetContext) {
+        void pick(ImageSource source) {
+          Navigator.pop(sheetContext);
+          // Không await trong builder: `context` của sheet đã bị pop, chỉ còn
+          // `context` của màn hình chính mới dùng để hiện SnackBar được.
+          _runOcr(context, provider, source);
+        }
+
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -667,23 +693,39 @@ class _HomeViewState extends State<HomeView> {
               ListTile(
                 leading: const Icon(Icons.camera_alt_outlined),
                 title: const Text('Chụp ảnh'),
-                onTap: () {
-                  Navigator.pop(context);
-                  provider.recognizeText(ImageSource.camera);
-                },
+                onTap: () => pick(ImageSource.camera),
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('Chọn từ thư viện'),
-                onTap: () {
-                  Navigator.pop(context);
-                  provider.recognizeText(ImageSource.gallery);
-                },
+                onTap: () => pick(ImageSource.gallery),
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  /// OCR chạy ~7s và lỗi của nó (_errorMessage) không tự hiện lên đâu ở màn này,
+  /// nên phải chờ xong rồi nói thẳng bằng SnackBar — bao gồm cả "hết lượt" của server.
+  Future<void> _runOcr(
+    BuildContext context,
+    SummaryProvider provider,
+    ImageSource source,
+  ) async {
+    await provider.recognizeText(source);
+    if (!context.mounted) return;
+    final String? message = provider.errorMessage;
+    if (message == null) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppConstants.errorColor,
+        ),
+      );
   }
 }

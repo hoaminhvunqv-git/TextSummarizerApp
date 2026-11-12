@@ -262,13 +262,18 @@ class _ExplanationBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final correct = question.isCorrect(answered);
     final color = correct ? AppConstants.successColor : AppConstants.errorColor;
+    // `correctIndex == -1` là server không gửi đáp án về (drift payload); in thẳng
+    // `optionLetter(-1)` ra chữ "@" và nói dối người dùng rằng đó là đáp án đúng.
+    final String answerHint = question.correctIndex >= 0
+        ? 'đáp án đúng là ${optionLetter(question.correctIndex)}'
+        : 'máy chủ không trả đáp án đúng cho câu này';
     final String headline;
     if (answered == null) {
-      headline = 'Bạn bỏ trống — đáp án đúng là ${optionLetter(question.correctIndex)}';
+      headline = 'Bạn bỏ trống — $answerHint';
     } else if (correct) {
       headline = 'Chính xác';
     } else {
-      headline = 'Chưa đúng — đáp án đúng là ${optionLetter(question.correctIndex)}';
+      headline = 'Chưa đúng — $answerHint';
     }
 
     return Container(

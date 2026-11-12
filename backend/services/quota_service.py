@@ -42,10 +42,6 @@ WHERE owner_key = %s AND usage_date = %s;
 """
 
 
-def now_vn() -> datetime:
-    return datetime.now(VN_TZ)
-
-
 def today_vn() -> date:
     """Ngày nghiệp vụ theo múi giờ +07, đổi ca đúng nửa đêm Việt Nam."""
     return now_vn().date()

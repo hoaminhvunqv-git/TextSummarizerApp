@@ -8,23 +8,38 @@ import '../core/constants.dart';
 import '../core/api_client.dart';
 
 class SummaryProvider extends ChangeNotifier {
+  static const String _offlineMessage =
+      'Không thể kết nối tới máy chủ. Vui lòng kiểm tra lại mạng.';
+  static const String _aiOfflineMessage =
+      'Chưa thể kết nối tới máy chủ AI. Vui lòng kiểm tra lại mạng.';
+  static const String _formatMessage =
+      'Máy chủ trả về dữ liệu không đúng định dạng.';
+
   final TextEditingController textController = TextEditingController();
   final ApiClient _apiClient = ApiClient();
 
   String _selectedLength = 'medium'; // short | medium | long
   bool _isLoading = false;
+  bool _isReadingUsage = false;
   String? _errorMessage;
   Map<String, dynamic>? _summaryResult;
-  Map<String, dynamic>? _usage; // {summary_remaining, quiz_remaining} từ chính API
+  Map<String, dynamic>? _usage; // {summary_remaining} từ usage của API
 
   String get selectedLength => _selectedLength;
   bool get isLoading => _isLoading;
+
+  /// Đang gọi `GET /usage` — màn hình dùng cờ này để phân biệt "đang đọc" với
+  /// "đọc không được" thay vì đoán qua giá trị null.
+  bool get isReadingUsage => _isReadingUsage;
   String? get errorMessage => _errorMessage;
   Map<String, dynamic>? get summaryResult => _summaryResult;
 
-  /// Số lượt còn lại hôm nay; null khi chưa đọc được (mạng lỗi, server chưa có DB).
-  int? get summaryRemaining => _usage?['summary_remaining'] as int?;
-  int? get quizRemaining => _usage?['quiz_remaining'] as int?;
+  /// Số lượt còn lại hôm nay; `null` = chưa có con số đáng tin.
+  /// JSON số sang Dart có thể là `int` hoặc `double` nên ép qua `num`, không `as int`.
+  int? get summaryRemaining {
+    final raw = _usage?['summary_remaining'];
+    return raw is num ? raw.toInt() : null;
+  }
 
   int get charCount => textController.text.trim().length;
 
@@ -97,6 +112,9 @@ class SummaryProvider extends ChangeNotifier {
         type: FileType.custom,
         allowedExtensions: ['txt', 'docx', 'pdf'],
         allowMultiple: false,
+        // Không có cờ này thì `file.bytes` luôn null trên Android và lời gọi
+        // `file.bytes!` bên dưới là một lần crash ngay khi người dùng chọn tệp.
+        withData: true,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -113,6 +131,13 @@ class SummaryProvider extends ChangeNotifier {
         return;
       }
 
+      final bytes = file.bytes;
+      if (bytes == null) {
+        _errorMessage = 'Không đọc được nội dung file. Vui lòng thử lại.';
+        notifyListeners();
+        return;
+      }
+
       _isLoading = true;
       _errorMessage = null;
       notifyListeners();
@@ -120,7 +145,7 @@ class SummaryProvider extends ChangeNotifier {
       // Create multipart form data
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
-          file.bytes!,
+          bytes,
           filename: file.name,
         ),
       });
@@ -131,23 +156,19 @@ class SummaryProvider extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        final data = response.data['data'] as Map<String, dynamic>;
-        final extractedText = data['text'] as String;
-        setText(extractedText);
-      } else {
-        _errorMessage = response.data['message'] ?? 'Không thể trích xuất văn bản từ file.';
-      }
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final errorData = e.response!.data;
-        if (errorData is Map<String, dynamic>) {
-          _errorMessage = errorData['message'] ?? 'Lỗi khi trích xuất file.';
+        final body = response.data;
+        final data = body is Map ? body['data'] : null;
+        final extractedText = data is Map ? data['text'] : null;
+        if (extractedText is String) {
+          setText(extractedText);
         } else {
-          _errorMessage = 'Lỗi khi trích xuất file.';
+          _errorMessage = _formatMessage;
         }
       } else {
-        _errorMessage = 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra lại mạng.';
+        _errorMessage = _messageOf(response.data, 'Không thể trích xuất văn bản từ file.');
       }
+    } on DioException catch (e) {
+      _errorMessage = _errorOf(e, offline: _offlineMessage, fallback: 'Lỗi khi trích xuất file.');
     } catch (e) {
       _errorMessage = 'Đã có lỗi xảy ra khi trích xuất file.';
     } finally {
@@ -189,23 +210,23 @@ class SummaryProvider extends ChangeNotifier {
       );
 
       if (response.statusCode == 200) {
-        final data = response.data['data'] as Map<String, dynamic>;
-        final extractedText = data['text'] as String;
-        setText(extractedText);
-      } else {
-        _errorMessage = response.data['message'] ?? 'Không thể trích xuất văn bản từ ảnh.';
-      }
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final errorData = e.response!.data;
-        if (errorData is Map<String, dynamic>) {
-          _errorMessage = errorData['message'] ?? 'Lỗi khi nhận diện văn bản từ ảnh.';
+        final body = response.data;
+        final data = body is Map ? body['data'] : null;
+        final extractedText = data is Map ? data['text'] : null;
+        if (extractedText is String) {
+          setText(extractedText);
         } else {
-          _errorMessage = 'Lỗi khi nhận diện văn bản từ ảnh.';
+          _errorMessage = _formatMessage;
         }
       } else {
-        _errorMessage = 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra lại mạng.';
+        _errorMessage = _messageOf(response.data, 'Không thể trích xuất văn bản từ ảnh.');
       }
+    } on DioException catch (e) {
+      _errorMessage = _errorOf(
+        e,
+        offline: _offlineMessage,
+        fallback: 'Lỗi khi nhận diện văn bản từ ảnh.',
+      );
     } catch (e) {
       _errorMessage = 'Đã có lỗi xảy ra khi nhận diện văn bản từ ảnh.';
     } finally {
@@ -230,23 +251,46 @@ class SummaryProvider extends ChangeNotifier {
     }
   }
 
+  /// Ưu tiên đúng thông điệp tiếng Việt của server: "hết lượt", "văn bản quá ngắn"
+  /// và "mất mạng" là ba chuyện khác nhau — gộp lại thì người dùng không biết làm gì tiếp.
+  String _messageOf(Object? body, String fallback) {
+    if (body is Map) {
+      final message = body['message'];
+      if (message is String && message.isNotEmpty) return message;
+    }
+    return fallback;
+  }
+
+  String _errorOf(DioException e, {required String offline, required String fallback}) {
+    if (e.type == DioExceptionType.connectionError || e.response == null) {
+      return offline;
+    }
+    return _messageOf(e.response!.data, fallback);
+  }
+
   /// Đọc lượt còn lại của thiết bị để app không phải đoán 20/20 sau khi app bị tắt giữa ngày.
-  /// Thất bại thì im lặng bỏ trống: thông tin này chỉ là nhãn phụ, không chặn người dùng soạn thảo.
+  ///
+  /// Thất bại là bỏ trắng (`_usage = null`), không giữ số của lần đọc trước: một con số
+  /// cũ là lời nói dối về lượt hôm nay, còn màn hình thì luôn nói được "chưa đọc được".
+  /// Bỏ qua khi đang tóm tắt vì phản hồi 201 mang usage mới hơn kết quả của GET này.
   Future<void> loadUsage() async {
+    if (_isLoading) return;
+    _isReadingUsage = true;
+    notifyListeners();
+
     try {
-      final response = await _apiClient.dio.get('/api/v1/usage');
-      final data = response.data;
-      if (data is Map && data['data'] is Map) {
-        final payload = (data['data'] as Map).cast<String, dynamic>();
-        _usage = {
-          'summary_remaining': (payload['summary'] as Map?)?['remaining'],
-          'quiz_remaining': (payload['quiz'] as Map?)?['remaining'],
-        };
-      }
+      final body = (await _apiClient.dio.get('/api/v1/usage')).data;
+      final data = body is Map ? body['data'] : null;
+      final summary = data is Map ? data['summary'] : null;
+      _usage = summary is Map
+          ? <String, dynamic>{'summary_remaining': summary['remaining']}
+          : null;
     } catch (_) {
       _usage = null;
+    } finally {
+      _isReadingUsage = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   /// Bắt đầu gửi yêu cầu tóm tắt
@@ -267,26 +311,27 @@ class SummaryProvider extends ChangeNotifier {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        _summaryResult = response.data['data'] as Map<String, dynamic>;
-        // Response 201 đã mang sẵn usage nên không phải gọi thêm GET /usage.
-        final usage = _summaryResult!['usage'];
-        if (usage is Map) _usage = usage.cast<String, dynamic>();
-      } else {
-        _errorMessage = response.data['message'] ?? 'Không thể tóm tắt văn bản.';
-      }
-    } on DioException catch (e) {
-      if (e.response != null) {
-        // Request tới được backend: server đã giải thích bằng tiếng Việt, dùng lại lời đó
-        // (hết lượt, văn bản quá ngắn, mốc chưa mở khoá, buộc cập nhật app...).
-        final errorData = e.response!.data;
-        if (errorData is Map<String, dynamic>) {
-          _errorMessage = errorData['message'] ?? 'Không thể tóm tắt văn bản.';
+        final body = response.data;
+        final data = body is Map ? body['data'] : null;
+        if (data is! Map) {
+          _errorMessage = _formatMessage;
         } else {
-          _errorMessage = 'Không thể tóm tắt văn bản.';
+          _summaryResult = data.cast<String, dynamic>();
+          // Response 201 đã mang sẵn usage nên không phải gọi thêm GET /usage.
+          final usage = _summaryResult!['usage'];
+          if (usage is Map) _usage = usage.cast<String, dynamic>();
         }
       } else {
-        _errorMessage = 'Chưa thể kết nối tới máy chủ AI. Vui lòng kiểm tra lại mạng.';
+        _errorMessage = _messageOf(response.data, 'Không thể tóm tắt văn bản.');
       }
+    } on DioException catch (e) {
+      // Request tới được backend: server đã giải thích bằng tiếng Việt, dùng lại lời đó
+      // (hết lượt, văn bản quá ngắn, mốc chưa mở khoá, buộc cập nhật app...).
+      _errorMessage = _errorOf(
+        e,
+        offline: _aiOfflineMessage,
+        fallback: 'Không thể tóm tắt văn bản.',
+      );
     } catch (e) {
       _errorMessage = 'Đã có lỗi xảy ra khi tóm tắt.';
     } finally {

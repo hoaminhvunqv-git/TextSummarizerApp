@@ -159,11 +159,17 @@ class _HistoryViewState extends State<HistoryView> {
       );
     }
     if (provider.hasMore) return const SizedBox(height: 8);
+    // `hasMore` tắt được cả khi trang kế trả về rỗng, nên "toàn bộ" chỉ nói được
+    // khi số dòng trên màn hình thực sự bằng số server báo.
+    final int shown = provider.items.length;
+    final int total = provider.total;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Center(
         child: Text(
-          'Đã hiển thị toàn bộ ${provider.total} bản tóm tắt',
+          shown >= total
+              ? 'Đã hiển thị toàn bộ $shown bản tóm tắt'
+              : 'Đã hiển thị $shown/$total bản tóm tắt',
           style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
         ),
       ),

@@ -28,8 +28,17 @@ logger = logging.getLogger("text_summarizer.summary")
 
 
 def _usage_block(owner: str, day=None) -> dict:
-    """Hai trường `usage` trong response, đọc thật từ `usage_quota` (SPEC 5.5)."""
-    usage = quota_service.get_usage(owner, day)
+    """Hai trường `usage` trong response, đọc thật từ `usage_quota` (SPEC 5.5).
+
+    Bản ghi đã commit trước khi hàm này chạy, nên hỏng ở đây chỉ được phép làm
+    thiếu nhãn lượt — nếu để nó nổ thì route biến một lần tóm tắt thành công
+    thành 500, và client bấm lại là mất thêm lượt.
+    """
+    try:
+        usage = quota_service.get_usage(owner, day)
+    except Exception as exc:
+        logger.error(f"Không đọc được usage sau khi lưu: {type(exc).__name__}")
+        return {"summary_remaining": None, "quiz_remaining": None}
     return {
         "summary_remaining": usage["summary"]["remaining"],
         "quiz_remaining": usage["quiz"]["remaining"],

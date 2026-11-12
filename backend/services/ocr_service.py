@@ -70,7 +70,12 @@ class OcrService:
                 response_mime_type="application/json",
                 response_schema=OCR_SCHEMA,
                 temperature=0.1,  # Thấp để chính xác
-                http_options=types.HttpOptions(timeout=Config.GEMINI_TIMEOUT_SECONDS * 1000),
+                http_options=types.HttpOptions(
+                    timeout=Config.GEMINI_TIMEOUT_SECONDS * 1000,
+                    # Không cho SDK retry ngầm (xem gemini_service): một request OCR
+                    # treo 5x sẽ chiếm thread gunicorn và chạm trần 60s của app.
+                    retry_options=types.HttpRetryOptions(attempts=1),
+                ),
             )
 
             response = client.models.generate_content(

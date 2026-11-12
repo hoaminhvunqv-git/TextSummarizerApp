@@ -155,7 +155,7 @@ TextSummarizerAI/
   - Làm bài theo từng câu: chọn A–D là biết đúng/sai **ngay tại máy** kèm giải thích, có nút **Bỏ qua câu này** (server tính là sai). Đã chọn thì khoá câu đó, đổi ý sẽ lệch với mảng nộp đi.
   - Điểm trên màn kết quả là điểm **server chấm** (`POST /quizzes/{id}/attempts`), không phải điểm app tự cộng; nút **Làm lại** xoá sạch đáp án tại chỗ và nộp thành một lượt mới.
   - Màn kết quả có mục **"Các lần làm trước"** (`GET /quizzes/{id}/attempts`, gọi ngay sau khi nộp): điểm thang 10 + số câu đúng + thời điểm từng lượt cũ, lượt vừa nộp bị loại vì đã hiển thị đầy đủ phía trên. Lỗi tải chỉ ẩn mục này đi, không chặn màn điểm và không hiện SnackBar.
-  - Riêng lời gọi tạo quiz dùng `receiveTimeout` **150s** thay vì 60s mặc định của Dio: `GEMINI_QUIZ_TIMEOUT_SECONDS=30` cộng 1 lần retry là kịch bản xấu chạm trần 60s (đo thật 2026-11-10: 54,6s và 59,1s).
+  - Riêng lời gọi tạo quiz dùng `receiveTimeout` **90s** thay vì 60s mặc định của Dio. Trần thật của một request không phải con số đó: SDK `google-genai` tự retry 5 lần nếu không đặt `retry_options=HttpRetryOptions(attempts=1)`, nên 30s của `GEMINI_QUIZ_TIMEOUT_SECONDS` từng thành 122,1s (đo 2026-11-12). Server giờ chỉ thử **một** lần, nên 90s là `30s gọi Gemini + phần còn lại của chuỗi DB/mạng`.
 
 ---
 

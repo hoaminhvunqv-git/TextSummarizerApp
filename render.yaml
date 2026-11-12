@@ -21,8 +21,14 @@ services:
         value: "0"
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
+      - key: GEMINI_MODEL_SUMMARIZE
+        value: gemini-3.1-flash-lite
       - key: GEMINI_TIMEOUT_SECONDS
         value: "15"
+      # Quiz chậm hơn tóm tắt một bậc; để trống thì config.py vẫn default 30s,
+      # ghi ra đây để giá trị chạy trên Render là giá trị nhìn thấy được.
+      - key: GEMINI_QUIZ_TIMEOUT_SECONDS
+        value: "30"
       - key: GEMINI_MAX_RETRY
         value: "1"
       - key: RATE_LIMIT_PER_MINUTE
@@ -31,8 +37,15 @@ services:
         value: "1"
       - key: RATELIMIT_STORAGE_URI
         value: memory://
-      # Key Gemini: điền tay trong Render dashboard (sync:false = blueprint không mang giá trị).
+      # Key bí mật: điền tay trong Render dashboard (sync:false = blueprint không mang giá trị).
       - key: GEMINI_API_KEY
         sync: false
-      # DATABASE_URL / ENCRYPTION_KEY / JWT_SECRET chưa cần ở giai đoạn này:
-      # config.py đọc chúng với default rỗng và GĐ1 không chạm DB hay mã hoá.
+      # Hai key này là điều kiện chạy của GĐ2-GĐ3, không còn là "chưa cần":
+      # DATABASE_URL cho lịch sử + quota + quiz trên Neon, ENCRYPTION_KEY cho
+      # crypto_service khi ghi/đọc văn bản gốc. Thiếu chúng, /health vẫn xanh
+      # nhưng mọi request chạm DB trả 500.
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      # JWT_SECRET chỉ cần từ GĐ4 (tài khoản + OTP); GĐ1-GĐ3 không đọc nó.

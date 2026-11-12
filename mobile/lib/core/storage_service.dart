@@ -12,20 +12,31 @@ class StorageService {
 
   String? _cachedDeviceId;
 
+  /// Sau proxy (Render) hai request song song cùng đi qua interceptor. Nếu cache
+  /// *kết quả* thì cả hai thấy null và mỗi bên sinh một UUID v4 khác nhau — lịch sử
+  /// và quota của thiết bị bị chia làm hai. Cache chính cái Future đang chạy.
+  Future<String>? _deviceIdFuture;
+
   /// Lấy Device_ID duy nhất của thiết bị (UUID v4).
   /// Nếu chưa có trong Secure Storage, tự động sinh mới và lưu lại.
-  Future<String> getDeviceId() async {
-    if (_cachedDeviceId != null) {
-      return _cachedDeviceId!;
-    }
+  Future<String> getDeviceId() {
+    final cached = _cachedDeviceId;
+    if (cached != null) return Future.value(cached);
+    return _deviceIdFuture ??= _readOrInitDeviceId();
+  }
 
-    String? deviceId = await _storage.read(key: _deviceIdKey);
-    if (deviceId == null || deviceId.isEmpty) {
-      deviceId = const Uuid().v4();
-      await _storage.write(key: _deviceIdKey, value: deviceId);
+  Future<String> _readOrInitDeviceId() async {
+    try {
+      String? deviceId = await _storage.read(key: _deviceIdKey);
+      if (deviceId == null || deviceId.isEmpty) {
+        deviceId = const Uuid().v4();
+        await _storage.write(key: _deviceIdKey, value: deviceId);
+      }
+      _cachedDeviceId = deviceId;
+      return deviceId;
+    } finally {
+      _deviceIdFuture = null;
     }
-    _cachedDeviceId = deviceId;
-    return deviceId;
   }
 
   /// Lấy JWT token (nếu đã đăng nhập ở Giai đoạn 4)

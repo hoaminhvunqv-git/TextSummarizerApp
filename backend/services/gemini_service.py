@@ -208,11 +208,18 @@ class GeminiService:
             response_mime_type="application/json",
             response_schema=SUMMARY_SCHEMA,
             temperature=0.3,
-            http_options=types.HttpOptions(timeout=timeout_seconds * 1000),  # mili-giây
+            http_options=types.HttpOptions(
+                timeout=timeout_seconds * 1000,  # mili-giây
+                # Mặc định SDK tự retry 5 lần với backoff 1/2/4/8s khi gặp 408/429/5xx,
+                # nghĩa là `timeout` KHÔNG phải trần thời gian chờ (đo thật: một request
+                # tóm tắt hết 122,1s trong khi app bỏ ở 60s). Attempt duy nhất để
+                # `GEMINI_MAX_RETRY` của chính ta là bộ đếm retry duy nhất.
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
 
         response = client.models.generate_content(
-            model=Config.GEMINI_MODEL,
+            model=Config.GEMINI_MODEL_SUMMARIZE,
             contents=user_content,
             config=config,
         )
@@ -294,7 +301,11 @@ class GeminiService:
             response_schema=QUIZ_SCHEMA,
             # PROMPTS.md mục 0: quiz dùng temperature ~0.7 (tóm tắt dùng 0.3)
             temperature=0.7,
-            http_options=types.HttpOptions(timeout=Config.GEMINI_QUIZ_TIMEOUT_SECONDS * 1000),
+            http_options=types.HttpOptions(
+                timeout=Config.GEMINI_QUIZ_TIMEOUT_SECONDS * 1000,
+                # Xem lý do ở `_call_gemini_api`: không cho SDK retry ngầm sau lời gọi quiz.
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
         )
 
         user_content = QUIZ_USER_MESSAGE_TEMPLATE.format(

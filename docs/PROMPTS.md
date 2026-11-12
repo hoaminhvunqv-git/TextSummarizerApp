@@ -5,14 +5,16 @@
 
 ## 0. Cấu hình (`config.py`, đọc từ env)
 ```
-GEMINI_MODEL=gemini-3.5-flash      # đã kiểm tra qua models.list() ngày 2026-11-07; gemini-2.5-flash đã bị khai tử (404)
+GEMINI_MODEL=gemini-3.5-flash      # quiz + OCR (ĐoD GĐ3 và test OCR thật đều đo trên model này)
+GEMINI_MODEL_SUMMARIZE=gemini-3.1-flash-lite   # riêng đường tóm tắt, đo 2026-11-12: 1,3s cho 501 ký tự, 1,7s cho 2.386 ký tự
 GEMINI_TIMEOUT_SECONDS=15
 GEMINI_QUIZ_TIMEOUT_SECONDS=30   # quiz chậm hơn tóm tắt rõ rệt: đo thật 2026-11-10, bản 2.500 ký tự / 10 câu hết 28,8s
 GEMINI_MAX_RETRY=1                 # retry 1 lần khi JSON hỏng/rỗng, sau đó fallback
+                                   # (đi kèm http_options.retry_options.attempts=1, nếu không SDK tự thử 5 lần)
 ```
 Gọi bằng JSON có cấu trúc (`response_mime_type="application/json"` + `response_schema`), `temperature` thấp (~0.3 tóm tắt, ~0.7 quiz).
 Rỗng/bị chặn safety/timeout/JSON hỏng → retry 1 lần → fallback TF-IDF (tóm tắt) hoặc `AI_UNAVAILABLE` (quiz).
-**Rủi ro đã đo (GĐ3.2):** hai lần thử quiz nối tiếp khi Google trả 503 "high demand" hết 54,6–59,1s, chạm trần `receiveTimeout` 60s của app (`mobile/lib/core/api_client.dart:18`) → GĐ3.5 phải tăng timeout riêng cho lời gọi quiz hoặc thêm nút Thử lại.
+**Rủi ro đã đo (GĐ3.2):** hai lần thử quiz nối tiếp khi Google trả 503 "high demand" hết 54,6–59,1s, rồi 122,1s, vượt trần `receiveTimeout` 60s của app (`mobile/lib/core/api_client.dart:18`). Nguyên nhân không phải timeout quá ngắn mà là SDK `google-genai` **tự retry 5 lần** phía trong; từ 2026-11-12 mọi lời gọi đặt `retry_options=HttpRetryOptions(attempts=1)` để `GEMINI_MAX_RETRY` là bộ đếm retry duy nhất, nên trần thật của một request ≈ timeout × (1 + GEMINI_MAX_RETRY).
 
 ## 1. Tóm tắt
 
@@ -131,14 +133,19 @@ from google.genai import types
 
 client = genai.Client(api_key=config.GEMINI_API_KEY)
 resp = client.models.generate_content(
-    model=config.GEMINI_MODEL,
+    model=config.GEMINI_MODEL_SUMMARIZE,  # quiz & OCR vẫn dùng config.GEMINI_MODEL
     contents=user_message,
     config=types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
         response_mime_type="application/json",
         response_schema=SUMMARY_SCHEMA,
         temperature=0.3,
-        # timeout: cấu hình qua http_options hoặc bọc bằng concurrent.futures (15s)
+        # timeout tính bằng mili-giây và CHỈ áp cho một lần gọi HTTP; SDK còn tự
+        # retry 5 lần nếu không đặt attempts=1, nên 15s có thể thành 122s.
+        http_options=types.HttpOptions(
+            timeout=config.GEMINI_TIMEOUT_SECONDS * 1000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
     ),
 )
 data = json.loads(resp.text)  # try/except -> retry/fallback

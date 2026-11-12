@@ -32,7 +32,16 @@ logger = logging.getLogger("text_summarizer.quiz")
 
 
 def _usage_block(owner: str, day=None) -> dict:
-    usage = quota_service.get_usage(owner, day)
+    """Quiz đã commit rồi nên hỏng khi đọc usage chỉ được phép làm thiếu nhãn lượt.
+
+    Để nó nổ thì route biến một bộ câu hỏi đã tốn lượt thành 500, và người dùng
+    bấm lại là mất thêm lượt nữa. `usage` với hai số null là shape đã có từ GĐ1.
+    """
+    try:
+        usage = quota_service.get_usage(owner, day)
+    except Exception as exc:
+        logger.error(f"Không đọc được usage sau khi lưu quiz: {type(exc).__name__}")
+        return {"summary_remaining": None, "quiz_remaining": None}
     return {
         "summary_remaining": usage["summary"]["remaining"],
         "quiz_remaining": usage["quiz"]["remaining"],

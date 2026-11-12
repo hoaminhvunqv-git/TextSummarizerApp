@@ -16,11 +16,14 @@ class QuizFormatException implements Exception {
 class QuizProvider extends ChangeNotifier {
   static const String _offlineMessage =
       'Chưa thể kết nối tới máy chủ. Vui lòng kiểm tra lại mạng.';
+  static const String _formatMessage =
+      'Máy chủ trả về dữ liệu không đúng định dạng.';
 
-  /// `GEMINI_QUIZ_TIMEOUT_SECONDS=30` cộng 1 lần retry là kịch bản xấu chạm đúng trần
-  /// 60s mặc định của Dio — đo thật 2026-11-10 có lần hết 54,6s và 59,1s. Riêng lời gọi
-  /// tạo quiz vì thế cần trần cao hơn, các lời đọc vẫn dùng 60s.
-  static const Duration _generationTimeout = Duration(seconds: 150);
+  /// Server giờ chỉ thử `GEMINI_MAX_RETRY`+1 = 2 lần với SDK không còn retry ngầm,
+  /// tức trần thật của một lần tạo quiz là 2 x `GEMINI_QUIZ_TIMEOUT_SECONDS` (30s) = 60s
+  /// cộng ghi DB. 90s để đủ chỗ cho cổ chai mạng mà không bắt người dùng ngồi nhìn
+  /// nút "Đang tạo quiz" khi server đã bỏ từ lâu.
+  static const Duration _generationTimeout = Duration(seconds: 90);
 
   final ApiClient _apiClient = ApiClient();
 
@@ -55,6 +58,10 @@ class QuizProvider extends ChangeNotifier {
     } on QuizFormatException catch (e) {
       _errorMessage = e.message;
       return null;
+    } catch (_) {
+      // Parse hỏng là TypeError/FormatException chứ không phải DioException.
+      _errorMessage = _formatMessage;
+      return null;
     } finally {
       _isCreating = false;
       notifyListeners();
@@ -77,6 +84,9 @@ class QuizProvider extends ChangeNotifier {
     } on QuizFormatException catch (e) {
       _errorMessage = e.message;
       return const <QuizListItem>[];
+    } catch (_) {
+      _errorMessage = _formatMessage;
+      return const <QuizListItem>[];
     }
   }
 
@@ -89,6 +99,9 @@ class QuizProvider extends ChangeNotifier {
       return null;
     } on QuizFormatException catch (e) {
       _errorMessage = e.message;
+      return null;
+    } catch (_) {
+      _errorMessage = _formatMessage;
       return null;
     }
   }
@@ -113,6 +126,9 @@ class QuizProvider extends ChangeNotifier {
     } on QuizFormatException catch (e) {
       _errorMessage = e.message;
       return null;
+    } catch (_) {
+      _errorMessage = _formatMessage;
+      return null;
     }
   }
 
@@ -132,6 +148,8 @@ class QuizProvider extends ChangeNotifier {
     } on DioException {
       return const <AttemptHistoryItem>[];
     } on QuizFormatException {
+      return const <AttemptHistoryItem>[];
+    } catch (_) {
       return const <AttemptHistoryItem>[];
     }
   }

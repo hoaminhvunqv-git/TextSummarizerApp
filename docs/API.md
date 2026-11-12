@@ -77,6 +77,8 @@ Response 201 (GĐ2 trở đi có `id`; GĐ1 `id` = `null`):
 ```
 
 Ghi chú theo giai đoạn: ở GĐ1 `id` = `null` và `usage.*` = `null` (chưa lưu DB, chưa theo dõi quota). Từ **bước 2.5**, `id` là số của dòng vừa ghi vào `summaries`, `created_at` là mốc DB ghi nhận đổi sang `+07:00`, `usage.summary_remaining`/`quiz_remaining` có giá trị thật từ `usage_quota`. Nội dung văn bản chỉ được lưu ở dạng mã hóa; response trả plaintext cho đúng người gọi (kiểm tra quyền sở hữu ở 2.6).
+- **`usage` có thể là `{ "summary_remaining": null, "quiz_remaining": null }`** (từ 2026-11-12): bản ghi đã commit thành công nhưng lần đọc `usage_quota` kế tiếp thất bại. Server **không** hoàn lượt trong tình huống này — lượt đã thật sự tiêu — và response vẫn là 201, vì báo lỗi ở đây sẽ khiến app bấm lại và đốt thêm lượt. App hiển thị "chưa đọc được lượt còn lại" thay vì một con số.
+- **503 khi pool DB hết chỗ** (từ 2026-11-12): mã `INTERNAL_ERROR` nhưng status **503**, message đúng là "Máy chủ đang bận, vui lòng thử lại sau ít phút." — đây là quá tải, không phải lỗi code, nên app hiện thông báo và cho bấm lại.
 
 ### POST `/files/extract` (multipart, field `file`)
 Response:
@@ -258,6 +260,6 @@ Lỗi: `INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`.
 | `RATE_LIMITED` | 429 | Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút. *(chỉ giới hạn số request/phút)* |
 | `UPDATE_REQUIRED` | 426 | Vui lòng cập nhật ứng dụng lên phiên bản mới. |
 | `AI_UNAVAILABLE` | 503 | Tính năng tạo quiz tạm thời không khả dụng. Vui lòng thử lại sau. |
-| `INTERNAL_ERROR` | 500 | Đã có lỗi xảy ra. Vui lòng thử lại. |
+| `INTERNAL_ERROR` | 500 | Đã có lỗi xảy ra. Vui lòng thử lại. *(riêng trường hợp pool DB hết chỗ → **503** "Máy chủ đang bận, vui lòng thử lại sau ít phút.")* |
 
 Ghi chú: tóm tắt **không bao giờ** trả `AI_UNAVAILABLE` (đã có fallback TF-IDF).

@@ -13,15 +13,31 @@ from psycopg2 import pool
 
 try:
     from backend.config import Config
+    from backend.utils.errors import AppError, ErrorCode
 except ImportError:
     from config import Config
+    from utils.errors import AppError, ErrorCode
 
-POOL_MIN_CONN = 1
+# psycopg2 chỉ GIỮ lại connection khi số connection nhàn rỗi còn dưới minconn,
+# nên minconn=1 biến mỗi burst thành một lần bắt tay TLS mới với Neon.
+POOL_MIN_CONN = 4
 # render.yaml chạy 1 worker x 4 threads, cộng thêm dự phòng cho request chồng nhau.
 POOL_MAX_CONN = 8
 
 _pool: Optional[pool.ThreadedConnectionPool] = None
 _pool_lock = threading.Lock()
+
+
+def _checkout():
+    """Mượn một connection; pool hết chỗ là quá tải, không phải lỗi code."""
+    try:
+        return get_pool().getconn()
+    except pool.PoolError as exc:
+        raise AppError(
+            ErrorCode.INTERNAL_ERROR,
+            message="Máy chủ đang bận, vui lòng thử lại sau ít phút.",
+            status_code=503,
+        ) from exc
 
 
 def db_configured() -> bool:
@@ -47,7 +63,7 @@ def get_pool() -> pool.ThreadedConnectionPool:
 @contextmanager
 def connection():
     """Mượn một connection từ pool; caller tự quyết định commit/rollback."""
-    conn = get_pool().getconn()
+    conn = _checkout()
     try:
         yield conn
     finally:

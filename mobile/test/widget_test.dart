@@ -1,8 +1,21 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/main.dart';
 
 void main() {
   testWidgets('App renders HomeView with basic elements and new UI updates', (WidgetTester tester) async {
+    // Clipboard.getData là một lời gọi platform channel: không có mock thì phía máy
+    // thật không bao giờ trả lời trong test, handler "Dán chữ" treo giữa chừng và
+    // SnackBar không bao giờ xuất hiện (đó là lý do test này từng đỏ).
+    // Trả về text rỗng = bộ nhớ tạm trống, đúng kịch bản cần kiểm.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (MethodCall call) async {
+      if (call.method == 'Clipboard.getData') {
+        return <String, dynamic>{'text': ''};
+      }
+      return null;
+    });
+
     // Build app
     await tester.pumpWidget(const TextSummarizerApp());
 
@@ -25,9 +38,13 @@ void main() {
     // 5. Verify Primary Action Button
     expect(find.text('Tóm tắt văn bản'), findsOneWidget);
 
-    // 6. Test tapping 'Dán chữ' triggers SnackBar when clipboard is empty
+    // 6. Dòng lượt còn lại phải hiện cả khi chưa đọc được số từ máy chủ:
+    // một màn hình trống trơn dễ đọc nhầm thành "còn rất nhiều lượt".
+    expect(find.textContaining('lượt còn lại hôm nay'), findsOneWidget);
+
+    // 7. Test tapping 'Dán chữ' triggers SnackBar when clipboard is empty
     await tester.tap(find.text('Dán chữ'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('Bộ nhớ tạm chưa có nội dung văn bản'), findsOneWidget);
   });
 }

@@ -23,6 +23,9 @@ class Config:
     # AI (Gemini)
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+    # Tóm tắt dùng model riêng vì người dùng chờ nó trên từng lần bấm "Tóm tắt";
+    # quiz và OCR vẫn dùng GEMINI_MODEL (DoD GĐ3 và test OCR thật đều đo trên 3.5-flash).
+    GEMINI_MODEL_SUMMARIZE = os.getenv("GEMINI_MODEL_SUMMARIZE", "gemini-3.1-flash-lite")
     GEMINI_TIMEOUT_SECONDS = int(os.getenv("GEMINI_TIMEOUT_SECONDS", 15))
     # Quiz chậm hơn tóm tắt hẳn một bậc: đo thật 2026-11-10, 3 câu mất 17-24s nên
     # 15s của tóm tắt sẽ luôn cắt ngang. 30s vẫn dưới receiveTimeout 60s của app.

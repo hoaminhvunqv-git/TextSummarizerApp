@@ -14,6 +14,8 @@ class HistoryProvider extends ChangeNotifier {
   static const int pageSize = 20;
   static const String _offlineMessage =
       'Chưa thể kết nối tới máy chủ. Vui lòng kiểm tra lại mạng.';
+  static const String _formatMessage =
+      'Máy chủ trả về dữ liệu không đúng định dạng.';
 
   final ApiClient _apiClient = ApiClient();
 
@@ -35,6 +37,10 @@ class HistoryProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   Future<void> refresh() async {
+    // Kéo tay trong lúc đang tải mà cho chạy tiếp thì hai request cùng ghi `_items`
+    // và `_page`, thành bản ghi trùng hoặc nhảy trang.
+    if (_isLoading) return;
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -54,6 +60,10 @@ class HistoryProvider extends ChangeNotifier {
       _errorMessage = _messageOf(e, 'Không tải được lịch sử. Vui lòng thử lại.');
     } on HistoryFormatException catch (e) {
       _errorMessage = e.message;
+    } catch (_) {
+      // Parse lỗi là TypeError/FormatException, không phải DioException. Nếu để nó
+      // thoát lên widget thì màn hình dừng ở trạng thái tải mãi mãi.
+      _errorMessage = _formatMessage;
     } finally {
       _isLoading = false;
       _loadedOnce = true;
@@ -82,6 +92,8 @@ class HistoryProvider extends ChangeNotifier {
       _errorMessage = _messageOf(e, 'Không tải thêm được lịch sử.');
     } on HistoryFormatException catch (e) {
       _errorMessage = e.message;
+    } catch (_) {
+      _errorMessage = _formatMessage;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -99,6 +111,11 @@ class HistoryProvider extends ChangeNotifier {
       return null;
     } on HistoryFormatException catch (e) {
       _errorMessage = e.message;
+      return null;
+    } catch (_) {
+      // Xem chú thích ở `refresh`: đây là chỗ từng để TypeError thoát ra ngoài,
+      // làm màn chi tiết treo "Đang mở bản tóm tắt…" vĩnh viễn.
+      _errorMessage = _formatMessage;
       return null;
     }
   }

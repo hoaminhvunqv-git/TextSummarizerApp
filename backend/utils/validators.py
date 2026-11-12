@@ -6,26 +6,30 @@ from flask import request, g
 try:
     from backend.config import Config
     from backend.utils.errors import AppError, ErrorCode
-    from backend.utils.text_utils import normalize_text, count_characters
+    from backend.utils.text_utils import normalize_text
 except ImportError:
     from config import Config
     from utils.errors import AppError, ErrorCode
-    from utils.text_utils import normalize_text, count_characters
+    from utils.text_utils import normalize_text
 
 VALID_SUMMARY_LENGTHS = {"short", "medium", "long"}
 
 
 def parse_version(version_str: str) -> Tuple[int, ...]:
-    """Chuyển chuỗi phiên bản dạng '1.0.0' hoặc '1.0.0+1' thành tuple số để so sánh."""
+    """Chuyển chuỗi phiên bản dạng '1.0.0' hoặc '1.0.0+1' thành tuple số để so sánh.
+
+    Bóp gọn về đúng 3 số hạng: tuple ngắn hơn luôn nhỏ hơn tuple dài hơn trong Python,
+    nên '1.0' so với '1.0.0' từng trả 426 dù app không hề cũ.
+    """
     if not version_str:
         return (0, 0, 0)
     try:
         # Bỏ phần build metadata (+...) và pre-release (-...) nếu có
         clean_v = version_str.strip().split("+")[0].split("-")[0]
         parts = [int(p) for p in clean_v.split(".")]
-        return tuple(parts)
     except Exception:
         return (0, 0, 0)
+    return tuple((parts + [0, 0, 0])[:3])
 
 
 def validate_summary_input(text: Optional[str], length: Optional[str] = "medium") -> Tuple[str, str]:
@@ -147,7 +151,10 @@ def validate_device_id(device_id: Optional[str]) -> str:
     except Exception:
         raise AppError(ErrorCode.INVALID_DEVICE_ID)
 
-    return clean_id
+    # Trả về dạng chuẩn viết thường: `D:UUID-THUONG` và `d:uuid-thuong` mà giữ nguyên
+    # như nhau thì Flask-Limiter và `usage_quota.owner_key` coi là hai thiết bị,
+    # tức một người đổi chữ hoa/thường là được gấp đôi lượt.
+    return str(parsed_uuid)
 
 
 def validate_app_version(app_version: Optional[str]) -> str:
